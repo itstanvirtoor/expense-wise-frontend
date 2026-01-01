@@ -76,6 +76,7 @@ export interface CreditCard {
 export interface DashboardData {
   totalExpenses: number;
   monthlySpending: number;
+  monthlyBudget: number;
   budgetRemaining: number;
   categoryBreakdown: Array<{
     category: string;
@@ -86,6 +87,12 @@ export interface DashboardData {
   monthlyTrends: Array<{
     month: string;
     total: number;
+  }>;
+  paymentMethodBreakdown: Array<{
+    method: string;
+    total: number;
+    count: number;
+    percentage: number;
   }>;
   recentExpenses: Expense[];
 }

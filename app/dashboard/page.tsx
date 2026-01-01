@@ -41,6 +41,11 @@ export default function UserDashboard() {
     }).format(isNaN(value) ? 0 : value);
   };
 
+  const getCurrentMonthYear = () => {
+    const now = new Date();
+    return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen flex flex-col">
@@ -88,7 +93,7 @@ export default function UserDashboard() {
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(dashboardData?.monthlySpending ?? 0)}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Current month spending
+                    {getCurrentMonthYear()}
                   </p>
                 </CardContent>
               </Card>
@@ -99,7 +104,7 @@ export default function UserDashboard() {
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(user?.monthlyBudget ?? 0)}</div>
+                  <div className="text-2xl font-bold">{formatCurrency(dashboardData?.monthlyBudget ?? 0)}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     Your monthly limit
                   </p>
@@ -114,9 +119,9 @@ export default function UserDashboard() {
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(dashboardData?.budgetRemaining ?? 0)}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {user?.monthlyBudget && user.monthlyBudget > 0 && dashboardData?.budgetRemaining !== undefined
-                      ? ((dashboardData.budgetRemaining / user.monthlyBudget) * 100).toFixed(0)
-                      : 0}% of monthly budget
+                    {dashboardData?.monthlyBudget && dashboardData.monthlyBudget > 0 && dashboardData?.budgetRemaining !== undefined
+                      ? ((dashboardData.budgetRemaining / dashboardData.monthlyBudget) * 100).toFixed(0)
+                      : 0}% remaining - {getCurrentMonthYear()}
                   </p>
                 </CardContent>
               </Card>
@@ -128,7 +133,7 @@ export default function UserDashboard() {
               <Card className="border-border/40 bg-card/50 backdrop-blur">
                 <CardHeader>
                   <CardTitle>Recent Expenses</CardTitle>
-                  <CardDescription>Your latest transactions</CardDescription>
+                  <CardDescription>Latest transactions - {getCurrentMonthYear()}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -159,7 +164,7 @@ export default function UserDashboard() {
               <Card className="border-border/40 bg-card/50 backdrop-blur">
                 <CardHeader>
                   <CardTitle>Category Breakdown</CardTitle>
-                  <CardDescription>Spending by category</CardDescription>
+                  <CardDescription>{getCurrentMonthYear()} spending by category</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -191,25 +196,59 @@ export default function UserDashboard() {
               </Card>
             </div>
 
-            {/* Monthly Trends */}
-            {dashboardData?.monthlyTrends && dashboardData.monthlyTrends.length > 0 && (
-              <Card className="border-border/40 bg-card/50 backdrop-blur">
-                <CardHeader>
-                  <CardTitle>Monthly Trends</CardTitle>
-                  <CardDescription>Last 6 months spending</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {dashboardData.monthlyTrends.map((trend) => (
-                      <div key={trend.month} className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{trend.month}</span>
-                        <span className="text-sm font-semibold">{formatCurrency(trend.total ?? 0)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* Additional Insights */}
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Monthly Trends */}
+              {dashboardData?.monthlyTrends && dashboardData.monthlyTrends.length > 0 && (
+                <Card className="border-border/40 bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle>Monthly Trends</CardTitle>
+                    <CardDescription>Last 6 months spending</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {dashboardData.monthlyTrends.map((trend) => (
+                        <div key={trend.month} className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{trend.month}</span>
+                          <span className="text-sm font-semibold">{formatCurrency(trend.total ?? 0)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Payment Method Breakdown */}
+              {dashboardData?.paymentMethodBreakdown && dashboardData.paymentMethodBreakdown.length > 0 && (
+                <Card className="border-border/40 bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle>Payment Methods</CardTitle>
+                    <CardDescription>{getCurrentMonthYear()} spending by payment mode</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {dashboardData.paymentMethodBreakdown.map((payment) => (
+                        <div key={payment.method} className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">{payment.method}</span>
+                            <span className="text-muted-foreground">{formatCurrency(payment.total)}</span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-accent transition-all duration-500"
+                              style={{ width: `${Math.min(payment.percentage ?? 0, 100)}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {payment.count ?? 0} transaction{(payment.count ?? 0) !== 1 ? 's' : ''} • {(payment.percentage ?? 0).toFixed(1)}%
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </>
         ) : (
           <div className="text-center py-12">

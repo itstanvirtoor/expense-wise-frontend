@@ -81,7 +81,7 @@ export default function ExpensesPage() {
     if (expense) {
       setEditingExpense(expense);
       setFormData({
-        date: expense.date,
+        date: new Date(expense.date).toISOString().split('T')[0],
         description: expense.description,
         category: expense.category,
         amount: expense.amount.toString(),
