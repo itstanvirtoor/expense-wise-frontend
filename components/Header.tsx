@@ -70,7 +70,7 @@ export default function Header() {
             </Link>
           ) : (
             <Link href="/">
-              <Button variant="outline">Home</Button>
+              <Button variant="outline">Logout</Button>
             </Link>
           )}
         </div>

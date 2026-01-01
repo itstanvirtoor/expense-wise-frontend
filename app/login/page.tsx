@@ -8,15 +8,19 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { Shield } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const router = useRouter();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Handle login logic here
     console.log("Login attempt:", { email, password });
+    // Navigate to dashboard
+    router.push("/dashboard");
   };
 
   return (
