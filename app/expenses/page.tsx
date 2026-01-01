@@ -11,31 +11,31 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, Filter, Download } from "lucide-react";
-import { useState } from "react";
-
-interface Expense {
-  id: string;
-  date: string;
-  description: string;
-  category: string;
-  amount: number;
-  paymentMethod: string;
-  notes?: string;
-}
+import { Plus, Pencil, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { api, Expense } from "@/lib/api";
+import { useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 
 const categories = ["Food & Dining", "Transportation", "Entertainment", "Utilities", "Shopping", "Healthcare", "Education", "Others"];
 const paymentMethods = ["Cash", "Credit Card", "Debit Card", "UPI", "Net Banking"];
 
-export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([
-    { id: "1", date: "2026-01-01", description: "Grocery Shopping", category: "Food & Dining", amount: 125.50, paymentMethod: "Credit Card", notes: "Weekly groceries" },
-    { id: "2", date: "2025-12-31", description: "Netflix Subscription", category: "Entertainment", amount: 15.99, paymentMethod: "Credit Card" },
-    { id: "3", date: "2025-12-30", description: "Gas Station", category: "Transportation", amount: 45.00, paymentMethod: "Debit Card" },
-    { id: "4", date: "2025-12-30", description: "Coffee Shop", category: "Food & Dining", amount: 8.50, paymentMethod: "Cash" },
-    { id: "5", date: "2025-12-29", description: "Electric Bill", category: "Utilities", amount: 85.00, paymentMethod: "Net Banking" },
-  ]);
+interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
 
+export default function ExpensesPage() {
+  const { user } = useAuth();
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+  });
+  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,6 +49,33 @@ export default function ExpensesPage() {
     paymentMethod: "",
     notes: "",
   });
+
+  useEffect(() => {
+    fetchExpenses();
+  }, [pagination.page, pagination.limit, filterCategory, searchQuery]);
+
+  const fetchExpenses = async () => {
+    setIsLoading(true);
+    try {
+      const response = await api.expenses.getAll({
+        page: pagination.page,
+        limit: pagination.limit,
+        category: filterCategory !== 'all' ? filterCategory : undefined,
+        search: searchQuery || undefined,
+      });
+
+      if (response.success && response.data) {
+        setExpenses(response.data.expenses || []);
+        if (response.data.pagination) {
+          setPagination(response.data.pagination);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch expenses:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleOpenDialog = (expense?: Expense) => {
     if (expense) {
@@ -75,45 +102,67 @@ export default function ExpensesPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.description || !formData.category || !formData.amount || !formData.paymentMethod) {
       alert("Please fill all required fields");
       return;
     }
 
-    const expenseData: Expense = {
-      id: editingExpense?.id || Date.now().toString(),
-      date: formData.date,
-      description: formData.description,
-      category: formData.category,
-      amount: parseFloat(formData.amount),
-      paymentMethod: formData.paymentMethod,
-      notes: formData.notes,
-    };
+    try {
+      const expensePayload = {
+        date: formData.date,
+        description: formData.description,
+        category: formData.category,
+        amount: parseFloat(formData.amount),
+        paymentMethod: formData.paymentMethod,
+        notes: formData.notes || undefined,
+      };
 
-    if (editingExpense) {
-      setExpenses(expenses.map(exp => exp.id === editingExpense.id ? expenseData : exp));
-    } else {
-      setExpenses([expenseData, ...expenses]);
+      if (editingExpense) {
+        await api.expenses.update(editingExpense.id, expensePayload);
+      } else {
+        await api.expenses.create(expensePayload);
+      }
+
+      setIsDialogOpen(false);
+      fetchExpenses(); // Reload expenses
+    } catch (error) {
+      console.error('Failed to save expense:', error);
+      alert('Failed to save expense. Please try again.');
     }
-
-    setIsDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this expense?")) {
-      setExpenses(expenses.filter(exp => exp.id !== id));
+      try {
+        await api.expenses.delete(id);
+        fetchExpenses(); // Reload expenses
+      } catch (error) {
+        console.error('Failed to delete expense:', error);
+        alert('Failed to delete expense. Please try again.');
+      }
     }
   };
 
-  const filteredExpenses = expenses.filter(expense => {
-    const matchesSearch = expense.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         expense.category.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = filterCategory === "all" || expense.category === filterCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: user?.currency || 'USD',
+    }).format(amount);
+  };
 
-  const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+  const handlePageChange = (newPage: number) => {
+    setPagination(prev => ({ ...prev, page: newPage }));
+  };
+
+  const handleLimitChange = (newLimit: number) => {
+    setPagination(prev => ({ ...prev, page: 1, limit: newLimit }));
+  };
+
+  const handleSearch = () => {
+    setPagination(prev => ({ ...prev, page: 1 }));
+    fetchExpenses();
+  };
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
@@ -130,10 +179,11 @@ export default function ExpensesPage() {
   };
 
   return (
+    <ProtectedRoute>
     <div className="min-h-screen flex flex-col">
       <Header />
       <div className="flex flex-1">
-        <Sidebar userRole="user" />
+        <Sidebar userRole={(user?.role.toLowerCase() as "user" | "admin") || "user"} />
         
         <main className="flex-1 p-8 overflow-auto">
           <div className="max-w-7xl mx-auto space-y-6">
@@ -236,57 +286,37 @@ export default function ExpensesPage() {
               </Dialog>
             </div>
 
-            {/* Stats Summary */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card className="border-border/40 bg-card/50 backdrop-blur">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">${totalExpenses.toFixed(2)}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {filteredExpenses.length} transaction{filteredExpenses.length !== 1 ? 's' : ''}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/40 bg-card/50 backdrop-blur">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">This Month</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">$2,350.00</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Across all categories
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/40 bg-card/50 backdrop-blur">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Average Daily</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">$78.33</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Based on 30 days
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
             {/* Filters and Search */}
             <Card className="border-border/40 bg-card/50 backdrop-blur">
               <CardHeader>
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                   <div>
                     <CardTitle>All Expenses</CardTitle>
-                    <CardDescription>View and manage your expense history</CardDescription>
+                    <CardDescription>
+                      Showing {expenses.length} of {pagination.total} expenses
+                    </CardDescription>
                   </div>
-                  <Button variant="outline" size="sm">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
+                  <div className="flex gap-2">
+                    <Select 
+                      value={pagination.limit.toString()} 
+                      onValueChange={(value) => handleLimitChange(parseInt(value))}
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 per page</SelectItem>
+                        <SelectItem value="10">10 per page</SelectItem>
+                        <SelectItem value="25">25 per page</SelectItem>
+                        <SelectItem value="50">50 per page</SelectItem>
+                        <SelectItem value="100">100 per page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -297,6 +327,7 @@ export default function ExpensesPage() {
                       placeholder="Search expenses..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       className="pl-10"
                     />
                   </div>
@@ -313,83 +344,125 @@ export default function ExpensesPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <Button onClick={handleSearch} variant="secondary">
+                      Search
+                    </Button>
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-border/40 overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Payment</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredExpenses.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                            No expenses found. Add your first expense to get started!
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredExpenses.map((expense) => (
-                          <TableRow key={expense.id}>
-                            <TableCell className="font-medium">
-                              {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">{expense.description}</div>
-                                {expense.notes && (
-                                  <div className="text-xs text-muted-foreground">{expense.notes}</div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={getCategoryColor(expense.category)}>
-                                {expense.category}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {expense.paymentMethod}
-                            </TableCell>
-                            <TableCell className="text-right font-semibold">
-                              ${expense.amount.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleOpenDialog(expense)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDelete(expense.id)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
+                {isLoading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+                    <p className="mt-4 text-muted-foreground">Loading expenses...</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-lg border border-border/40 overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead>Category</TableHead>
+                            <TableHead>Payment</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        </TableHeader>
+                        <TableBody>
+                          {expenses.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                No expenses found. Add your first expense to get started!
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            expenses.map((expense) => (
+                              <TableRow key={expense.id}>
+                                <TableCell className="font-medium">
+                                  {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium">{expense.description}</div>
+                                    {expense.notes && (
+                                      <div className="text-xs text-muted-foreground">{expense.notes}</div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={getCategoryColor(expense.category)}>
+                                    {expense.category}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {expense.paymentMethod}
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {formatCurrency(expense.amount)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleOpenDialog(expense)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDelete(expense.id)}
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Pagination Controls */}
+                    {pagination.totalPages > 1 && (
+                      <div className="flex items-center justify-between mt-6">
+                        <div className="text-sm text-muted-foreground">
+                          Page {pagination.page} of {pagination.totalPages}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(pagination.page - 1)}
+                            disabled={pagination.page === 1}
+                          >
+                            <ChevronLeft className="h-4 w-4 mr-1" />
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(pagination.page + 1)}
+                            disabled={pagination.page === pagination.totalPages}
+                          >
+                            Next
+                            <ChevronRight className="h-4 w-4 ml-1" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
         </main>
       </div>
     </div>
+    </ProtectedRoute>
   );
 }

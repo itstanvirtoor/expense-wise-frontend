@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LogOut, User } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Header() {
   const pathname = usePathname();
+  const { user, isAuthenticated, logout } = useAuth();
   const isLanding = pathname === "/";
   const isAuthPage = pathname === "/login" || pathname === "/signup";
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
     <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -47,7 +53,7 @@ export default function Header() {
           </nav>
         )}
 
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-2">
           {isLanding ? (
             <>
               <Link href="/login">
@@ -68,11 +74,18 @@ export default function Header() {
                 Back to Home
               </Button>
             </Link>
-          ) : (
-            <Link href="/">
-              <Button variant="outline">Logout</Button>
-            </Link>
-          )}
+          ) : isAuthenticated ? (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50">
+                <User className="h-4 w-4" />
+                <span className="text-sm font-medium">{user?.name}</span>
+              </div>
+              <Button variant="outline" className="gap-2" onClick={handleLogout}>
+                <LogOut className="h-4 w-4" />
+                Logout
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
     </header>

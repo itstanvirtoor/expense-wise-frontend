@@ -7,11 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Calendar, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, BarChart3 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 
 interface CategoryData {
-  name: string;
+  category: string;
   amount: number;
   percentage: number;
   trend: "up" | "down";
@@ -19,32 +22,95 @@ interface CategoryData {
   color: string;
 }
 
-interface MonthlyData {
+interface TopExpense {
+  id: string;
+  description: string;
+  amount: number;
+  date: string;
+  category: string;
+}
+
+interface MonthlyTrend {
   month: string;
   expenses: number;
   income: number;
 }
 
+interface AnalyticsData {
+  insights: {
+    highestSpendingDay: string;
+    highestSpendingDayChange: number;
+    averageTransaction: number;
+    averageTransactionChange: number;
+    mostUsedPayment: string;
+    mostUsedPaymentPercentage: number;
+    budgetUtilization: number;
+    budgetUtilizationChange: number;
+  };
+  categoryBreakdown: CategoryData[];
+  topExpenses: TopExpense[];
+  monthlyTrends: MonthlyTrend[];
+}
+
 export default function AnalyticsPage() {
+  const { user } = useAuth();
   const [timeRange, setTimeRange] = useState("30days");
   const [viewType, setViewType] = useState("category");
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showExpenses, setShowExpenses] = useState(true);
+  const [showIncome, setShowIncome] = useState(true);
+  const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
+  const [period1, setPeriod1] = useState("30days");
+  const [period2, setPeriod2] = useState("7days");
+  const [period1Data, setPeriod1Data] = useState<AnalyticsData | null>(null);
+  const [period2Data, setPeriod2Data] = useState<AnalyticsData | null>(null);
 
-  const categoryData: CategoryData[] = [
-    { name: "Food & Dining", amount: 685, percentage: 35, trend: "up", trendValue: 12.5, color: "bg-primary" },
-    { name: "Transportation", amount: 420, percentage: 25, trend: "down", trendValue: 5.2, color: "bg-accent" },
-    { name: "Entertainment", amount: 315, percentage: 20, trend: "up", trendValue: 8.3, color: "bg-chart-3" },
-    { name: "Utilities", amount: 280, percentage: 15, trend: "down", trendValue: 2.1, color: "bg-chart-4" },
-    { name: "Others", amount: 150, percentage: 5, trend: "up", trendValue: 15.0, color: "bg-chart-5" },
-  ];
+  useEffect(() => {
+    fetchAnalytics();
+  }, [timeRange]);
 
-  const monthlyData: MonthlyData[] = [
-    { month: "Jul", expenses: 2100, income: 3500 },
-    { month: "Aug", expenses: 2350, income: 3500 },
-    { month: "Sep", expenses: 1950, income: 3500 },
-    { month: "Oct", expenses: 2280, income: 3800 },
-    { month: "Nov", expenses: 2450, income: 3800 },
-    { month: "Dec", expenses: 2650, income: 4000 },
-  ];
+  useEffect(() => {
+    fetchComparisonData();
+  }, [period1, period2]);
+
+  const fetchComparisonData = async () => {
+    try {
+      const [p1Response, p2Response] = await Promise.all([
+        api.analytics.getOverview({ timeRange: period1 }),
+        api.analytics.getOverview({ timeRange: period2 })
+      ]);
+      if (p1Response.success && p1Response.data) {
+        setPeriod1Data(p1Response.data);
+      }
+      if (p2Response.success && p2Response.data) {
+        setPeriod2Data(p2Response.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch comparison data:', error);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    setIsLoading(true);
+    try {
+      const response = await api.analytics.getOverview({ timeRange });
+      if (response.success && response.data) {
+        setAnalyticsData(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: user?.currency || 'USD',
+    }).format(amount || 0);
+  };
 
   const timeRanges = [
     { value: "7days", label: "Last 7 Days" },
@@ -55,26 +121,12 @@ export default function AnalyticsPage() {
     { value: "custom", label: "Custom Range" },
   ];
 
-  const topExpenses = [
-    { description: "Grocery Shopping", amount: 125.50, date: "Jan 1, 2026", category: "Food & Dining" },
-    { description: "Gas Station", amount: 85.00, date: "Dec 30, 2025", category: "Transportation" },
-    { description: "Electric Bill", amount: 75.00, date: "Dec 29, 2025", category: "Utilities" },
-    { description: "Restaurant", amount: 65.50, date: "Dec 28, 2025", category: "Food & Dining" },
-    { description: "Movie Tickets", amount: 45.00, date: "Dec 27, 2025", category: "Entertainment" },
-  ];
-
-  const insights = [
-    { title: "Highest Spending Day", value: "Fridays", change: "+25%", icon: Calendar },
-    { title: "Average Transaction", value: "$45.20", change: "-5%", icon: DollarSign },
-    { title: "Most Used Payment", value: "Credit Card", change: "68%", icon: BarChart3 },
-    { title: "Budget Utilization", value: "78%", change: "+12%", icon: PieChartIcon },
-  ];
-
   return (
+    <ProtectedRoute>
     <div className="min-h-screen flex flex-col">
       <Header />
       <div className="flex flex-1">
-        <Sidebar userRole="user" />
+        <Sidebar userRole={(user?.role.toLowerCase() as "user" | "admin") || "user"} />
         
         <main className="flex-1 p-8 overflow-auto">
           <div className="max-w-7xl mx-auto space-y-6">
@@ -105,25 +157,66 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Key Insights */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {insights.map((insight, index) => {
-                const Icon = insight.icon;
-                return (
-                  <Card key={index} className="border-border/40 bg-card/50 backdrop-blur">
+            {isLoading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+                <p className="mt-4 text-muted-foreground">Loading analytics...</p>
+              </div>
+            ) : analyticsData ? (
+              <>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <Card className="border-border/40 bg-card/50 backdrop-blur">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">{insight.title}</CardTitle>
-                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <CardTitle className="text-sm font-medium">Highest Spending Day</CardTitle>
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{insight.value}</div>
+                      <div className="text-2xl font-bold">{analyticsData.insights.highestSpendingDay}</div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {insight.change} from last period
+                        +{analyticsData.insights.highestSpendingDayChange}% from last period
                       </p>
                     </CardContent>
                   </Card>
-                );
-              })}
-            </div>
+
+                  <Card className="border-border/40 bg-card/50 backdrop-blur">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Average Transaction</CardTitle>
+                      <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{formatCurrency(analyticsData.insights.averageTransaction)}</div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {analyticsData.insights.averageTransactionChange >= 0 ? '+' : ''}{analyticsData.insights.averageTransactionChange}% from last period
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-border/40 bg-card/50 backdrop-blur">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Most Used Payment</CardTitle>
+                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{analyticsData.insights.mostUsedPayment}</div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {analyticsData.insights.mostUsedPaymentPercentage.toFixed(0)}% of transactions
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-border/40 bg-card/50 backdrop-blur">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Budget Utilization</CardTitle>
+                      <PieChartIcon className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{analyticsData.insights.budgetUtilization.toFixed(0)}%</div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        +{analyticsData.insights.budgetUtilizationChange}% from last period
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
 
             {/* Main Analytics Tabs */}
             <Tabs defaultValue="overview" className="space-y-4">
@@ -143,29 +236,35 @@ export default function AnalyticsPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {categoryData.map((category, i) => (
+                        {analyticsData.categoryBreakdown?.map((category, i) => (
                           <div key={i} className="space-y-2">
                             <div className="flex items-center justify-between text-sm">
                               <div className="flex items-center gap-2">
-                                <div className={`h-3 w-3 rounded-full ${category.color}`} />
-                                <span className="font-medium">{category.name}</span>
+                                <div 
+                                  className="h-3 w-3 rounded-full" 
+                                  style={{ backgroundColor: category?.color ?? '#3b82f6' }}
+                                />
+                                <span className="font-medium">{category.category}</span>
                               </div>
-                              <span className="text-muted-foreground">${category.amount}</span>
+                              <span className="text-muted-foreground">{formatCurrency(category.amount)}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="h-2 bg-muted rounded-full overflow-hidden flex-1">
                                 <div
-                                  className={`h-full ${category.color} transition-all duration-500`}
-                                  style={{ width: `${category.percentage}%` }}
+                                  className="h-full transition-all duration-500"
+                                  style={{ 
+                                    width: `${category.percentage}%`,
+                                    backgroundColor: category?.color ?? '#3b82f6'
+                                  }}
                                 />
                               </div>
                               <span className="text-xs text-muted-foreground w-12 text-right">
-                                {category.percentage}%
+                                {category.percentage.toFixed(1)}%
                               </span>
                             </div>
                           </div>
                         ))}
-                      </div>
+                        </div>
                     </CardContent>
                   </Card>
 
@@ -176,18 +275,20 @@ export default function AnalyticsPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {topExpenses.map((expense, i) => (
-                          <div key={i} className="flex items-center justify-between pb-4 border-b border-border/40 last:border-0 last:pb-0">
+                        {analyticsData.topExpenses?.slice(0, 5).map((expense) => (
+                          <div key={expense.id} className="flex items-center justify-between pb-4 border-b border-border/40 last:border-0 last:pb-0">
                             <div className="flex-1">
                               <p className="font-medium text-sm">{expense.description}</p>
                               <div className="flex items-center gap-2 mt-1">
-                                <p className="text-xs text-muted-foreground">{expense.date}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </p>
                                 <Badge variant="outline" className="text-xs">
                                   {expense.category}
                                 </Badge>
                               </div>
                             </div>
-                            <p className="font-semibold text-red-500">${expense.amount}</p>
+                            <p className="font-semibold text-red-500">{formatCurrency(expense.amount)}</p>
                           </div>
                         ))}
                       </div>
@@ -198,38 +299,105 @@ export default function AnalyticsPage() {
                 {/* Monthly Trend Chart Placeholder */}
                 <Card className="border-border/40 bg-card/50 backdrop-blur">
                   <CardHeader>
-                    <CardTitle>Monthly Trends</CardTitle>
-                    <CardDescription>Income vs Expenses over time</CardDescription>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Monthly Trends</CardTitle>
+                        <CardDescription>Income vs Expenses over time</CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant={showExpenses ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setShowExpenses(!showExpenses)}
+                        >
+                          Expenses
+                        </Button>
+                        <Button
+                          variant={showIncome ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setShowIncome(!showIncome)}
+                        >
+                          Income
+                        </Button>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-80 flex items-end justify-between gap-2 px-4">
-                      {monthlyData.map((data, i) => (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                          <div className="w-full flex flex-col gap-1 items-center">
-                            <div
-                              className="w-full bg-gradient-to-t from-primary to-primary/50 rounded-t-md hover:opacity-80 transition-opacity cursor-pointer"
-                              style={{ height: `${(data.expenses / 4000) * 250}px` }}
-                              title={`Expenses: $${data.expenses}`}
-                            />
-                            <div
-                              className="w-full bg-gradient-to-t from-accent to-accent/50 rounded-t-md hover:opacity-80 transition-opacity cursor-pointer"
-                              style={{ height: `${(data.income / 4000) * 250}px` }}
-                              title={`Income: $${data.income}`}
-                            />
+                    <div className="h-80 flex items-end justify-center gap-4 px-4">
+                      {analyticsData.monthlyTrends?.map((data, i) => {
+                        const maxValue = Math.max(
+                          ...(analyticsData.monthlyTrends?.map(d => {
+                            const values = [];
+                            if (showExpenses) values.push(d.expenses);
+                            if (showIncome) values.push(d.income);
+                            return Math.max(...values, 1);
+                          }) || [1])
+                        );
+                        return (
+                          <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                            <div 
+                              className="w-full relative group" 
+                              style={{ height: '250px' }}
+                              onMouseEnter={() => setHoveredMonth(i)}
+                              onMouseLeave={() => setHoveredMonth(null)}
+                            >
+                              {/* Income bar (rendered first, will be below) */}
+                              {showIncome && (
+                                <div
+                                  className="absolute bottom-0 w-full bg-gradient-to-t from-accent to-accent/50 rounded-t-md transition-opacity cursor-pointer"
+                                  style={{ 
+                                    height: `${(data.income / maxValue) * 250}px`,
+                                    opacity: showExpenses ? 0.7 : 1
+                                  }}
+                                />
+                              )}
+                              {/* Expenses bar (rendered second, will be on top) */}
+                              {showExpenses && (
+                                <div
+                                  className="absolute bottom-0 w-full bg-gradient-to-t from-primary to-primary/50 rounded-t-md transition-opacity cursor-pointer"
+                                  style={{ 
+                                    height: `${(data.expenses / maxValue) * 250}px`,
+                                    opacity: showIncome ? 0.7 : 1
+                                  }}
+                                />
+                              )}
+                              {/* Hover Tooltip */}
+                              {hoveredMonth === i && (
+                                <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-popover border border-border rounded-lg shadow-lg p-3 z-10 whitespace-nowrap">
+                                  <p className="font-semibold text-sm mb-2">{data.month}</p>
+                                  {showExpenses && (
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <div className="h-2 w-2 rounded bg-primary" />
+                                      <span className="text-xs">Expenses: {formatCurrency(data.expenses)}</span>
+                                    </div>
+                                  )}
+                                  {showIncome && (
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-2 w-2 rounded bg-accent" />
+                                      <span className="text-xs">Income: {formatCurrency(data.income)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground">{data.month}</span>
                           </div>
-                          <span className="text-xs text-muted-foreground">{data.month}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <div className="flex justify-center gap-6 mt-6">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded bg-primary" />
-                        <span className="text-sm text-muted-foreground">Expenses</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded bg-accent" />
-                        <span className="text-sm text-muted-foreground">Income</span>
-                      </div>
+                      {showExpenses && (
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded bg-primary" />
+                          <span className="text-sm text-muted-foreground">Expenses</span>
+                        </div>
+                      )}
+                      {showIncome && (
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded bg-accent" />
+                          <span className="text-sm text-muted-foreground">Income</span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -243,16 +411,16 @@ export default function AnalyticsPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      {categoryData.map((category, i) => (
+                      {analyticsData?.categoryBreakdown?.map((category, i) => (
                         <div key={i} className="space-y-3 p-4 rounded-lg border border-border/40 bg-background/30">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                              <div className={`h-10 w-10 rounded-lg ${category.color} flex items-center justify-center`}>
-                                <span className="text-white font-semibold">{category.percentage}%</span>
+                              <div className={`h-10 w-10 rounded-lg flex items-center justify-center`} style={{ backgroundColor: category?.color ?? '#3b82f6' }}>
+                                <span className="text-white font-semibold">{category.percentage.toFixed(0)}%</span>
                               </div>
                               <div>
-                                <p className="font-semibold">{category.name}</p>
-                                <p className="text-sm text-muted-foreground">${category.amount} spent</p>
+                                <p className="font-semibold">{category.category}</p>
+                                <p className="text-sm text-muted-foreground">{formatCurrency(category.amount)} spent</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -269,7 +437,10 @@ export default function AnalyticsPage() {
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div
                               className={`h-full ${category.color} transition-all duration-500`}
-                              style={{ width: `${category.percentage}%` }}
+                              style={{ 
+                                width: `${category.percentage}%`,
+                                backgroundColor: category?.color ?? '#3b82f6'
+                              }}
                             />
                           </div>
                         </div>
@@ -286,12 +457,56 @@ export default function AnalyticsPage() {
                     <CardDescription>Track your spending patterns over time</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-96 flex items-center justify-center border-2 border-dashed border-border/40 rounded-lg">
-                      <div className="text-center">
-                        <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">Advanced trend visualization</p>
-                        <p className="text-sm text-muted-foreground mt-2">Line charts and trend analysis will be displayed here</p>
-                      </div>
+                    <div className="space-y-6">
+                      {analyticsData.categoryBreakdown?.map((category, i) => (
+                        <div key={i} className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className="h-10 w-10 rounded-lg flex items-center justify-center"
+                                style={{ 
+                                  backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
+                                        category.color.includes('purple') ? '#a855f7' : 
+                                        category.color.includes('green') ? '#22c55e' : 
+                                        category.color.includes('orange') ? '#f97316' : 
+                                        category.color.includes('pink') ? '#ec4899' : 
+                                        category.color.includes('yellow') ? '#eab308' : '#6366f1'
+                                }}
+                              >
+                                <span className="text-white font-semibold text-sm">{category.percentage.toFixed(0)}%</span>
+                              </div>
+                              <div>
+                                <p className="font-semibold">{category.category}</p>
+                                <p className="text-sm text-muted-foreground">{formatCurrency(category.amount)} spent</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {category.trend === "up" ? (
+                                <TrendingUp className="h-4 w-4 text-red-500" />
+                              ) : (
+                                <TrendingDown className="h-4 w-4 text-green-500" />
+                              )}
+                              <span className={`text-sm font-medium ${category.trend === "up" ? "text-red-500" : "text-green-500"}`}>
+                                {category.trendValue}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full transition-all duration-500"
+                              style={{ 
+                                width: `${category.percentage}%`,
+                                backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
+                                      category.color.includes('purple') ? '#a855f7' : 
+                                      category.color.includes('green') ? '#22c55e' : 
+                                      category.color.includes('orange') ? '#f97316' : 
+                                      category.color.includes('pink') ? '#ec4899' : 
+                                      category.color.includes('yellow') ? '#eab308' : '#6366f1'
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
@@ -304,40 +519,105 @@ export default function AnalyticsPage() {
                     <CardDescription>Compare spending across different time periods</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label className="text-sm font-medium">Period 1</Label>
-                          <Select defaultValue="thismonth">
+                          <Select value={period1} onValueChange={setPeriod1}>
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="thismonth">This Month</SelectItem>
-                              <SelectItem value="lastmonth">Last Month</SelectItem>
-                              <SelectItem value="thisquarter">This Quarter</SelectItem>
+                              <SelectItem value="7days">Last 7 Days</SelectItem>
+                              <SelectItem value="30days">Last 30 Days</SelectItem>
+                              <SelectItem value="90days">Last 3 Months</SelectItem>
+                              <SelectItem value="6months">Last 6 Months</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
                           <Label className="text-sm font-medium">Period 2</Label>
-                          <Select defaultValue="lastmonth">
+                          <Select value={period2} onValueChange={setPeriod2}>
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="thismonth">This Month</SelectItem>
-                              <SelectItem value="lastmonth">Last Month</SelectItem>
-                              <SelectItem value="lastquarter">Last Quarter</SelectItem>
+                              <SelectItem value="7days">Last 7 Days</SelectItem>
+                              <SelectItem value="30days">Last 30 Days</SelectItem>
+                              <SelectItem value="90days">Last 3 Months</SelectItem>
+                              <SelectItem value="6months">Last 6 Months</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                       </div>
-                      <div className="h-96 flex items-center justify-center border-2 border-dashed border-border/40 rounded-lg mt-6">
-                        <div className="text-center">
-                          <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                          <p className="text-muted-foreground">Comparison charts will be displayed here</p>
-                          <p className="text-sm text-muted-foreground mt-2">Side-by-side analysis of selected periods</p>
+                      
+                      <div className="grid md:grid-cols-2 gap-6 mt-6">
+                        {/* Period 1 */}
+                        <div className="space-y-4">
+                          <div className="text-center pb-3 border-b">
+                            <p className="font-semibold">
+                              {period1 === "7days" ? "Last 7 Days" : period1 === "30days" ? "Last 30 Days" : period1 === "90days" ? "Last 3 Months" : "Last 6 Months"}
+                            </p>
+                            <p className="text-2xl font-bold mt-1">
+                              {formatCurrency(period1Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
+                            </p>
+                          </div>
+                          {period1Data?.categoryBreakdown?.slice(0, 5).map((category, i) => (
+                            <div key={i} className="space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium">{category.category}</span>
+                                <span className="text-muted-foreground">{formatCurrency(category.amount)}</span>
+                              </div>
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full transition-all"
+                                  style={{ 
+                                    width: `${category.percentage}%`,
+                                    backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
+                                          category.color.includes('purple') ? '#a855f7' : 
+                                          category.color.includes('green') ? '#22c55e' : 
+                                          category.color.includes('orange') ? '#f97316' : 
+                                          category.color.includes('pink') ? '#ec4899' : 
+                                          category.color.includes('yellow') ? '#eab308' : '#6366f1'
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Period 2 */}
+                        <div className="space-y-4">
+                          <div className="text-center pb-3 border-b">
+                            <p className="font-semibold">
+                              {period2 === "7days" ? "Last 7 Days" : period2 === "30days" ? "Last 30 Days" : period2 === "90days" ? "Last 3 Months" : "Last 6 Months"}
+                            </p>
+                            <p className="text-2xl font-bold mt-1">
+                              {formatCurrency(period2Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
+                            </p>
+                          </div>
+                          {period2Data?.categoryBreakdown?.slice(0, 5).map((category, i) => (
+                            <div key={i} className="space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium">{category.category}</span>
+                                <span className="text-muted-foreground">{formatCurrency(category.amount)}</span>
+                              </div>
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full transition-all"
+                                  style={{ 
+                                    width: `${category.percentage}%`,
+                                    backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
+                                          category.color.includes('purple') ? '#a855f7' : 
+                                          category.color.includes('green') ? '#22c55e' : 
+                                          category.color.includes('orange') ? '#f97316' : 
+                                          category.color.includes('pink') ? '#ec4899' : 
+                                          category.color.includes('yellow') ? '#eab308' : '#6366f1'
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -345,13 +625,16 @@ export default function AnalyticsPage() {
                 </Card>
               </TabsContent>
             </Tabs>
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No analytics data available</p>
+              </div>
+            )}
           </div>
         </main>
       </div>
     </div>
+    </ProtectedRoute>
   );
-}
-
-function Label({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <label className={className}>{children}</label>;
 }
