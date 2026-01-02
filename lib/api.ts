@@ -564,7 +564,13 @@ export const api = {
   // Categories
   categories: {
     getAll: () =>
-      ApiClient.get('/category'),
+      ApiClient.get('/categories'),
+  },
+
+  // Payment Methods
+  paymentMethods: {
+    getAll: () =>
+      ApiClient.get('/payment-methods'),
   },
 };
 

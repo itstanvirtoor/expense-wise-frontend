@@ -18,9 +18,6 @@ import { ProtectedRoute } from "@/contexts/AuthContext";
 import { useUser } from "@/contexts/UserContext";
 import { formatCurrency, formatDate } from "@/lib/timezone";
 
-const categories = ["Food & Dining", "Transportation", "Entertainment", "Utilities", "Shopping", "Healthcare", "Education", "Credit Card Repayment", "Others"];
-const paymentMethods = ["Cash", "Credit Card", "Debit Card", "UPI", "Net Banking"];
-
 interface PaginationInfo {
   page: number;
   limit: number;
@@ -32,6 +29,9 @@ export default function ExpensesPage() {
   const { user, currency, timezone } = useUser();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryObject, setCategoryObject] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 10,
@@ -58,6 +58,35 @@ export default function ExpensesPage() {
     fetchExpenses();
     fetchCreditCards();
   }, [pagination.page, pagination.limit, filterCategory, searchQuery]);
+
+  useEffect(() => {
+    fetchCategories();
+    fetchPaymentMethods();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await api.categories.getAll();
+      if (response.success && response.data) {
+        setCategories(response.data.categories.map((cat: any) => cat.name));
+        setCategoryObject(response.data.categories);
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
+  };
+
+  const fetchPaymentMethods = async () => {
+    try {
+      const response = await api.paymentMethods.getAll();
+      if (response.success && response.data) {
+        setPaymentMethods(response.data.paymentMethods || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch payment methods:', error);
+    }
+  };
+
   const fetchCreditCards = async () => {
     try {
       const response = await api.creditCards.getAll();
@@ -68,6 +97,7 @@ export default function ExpensesPage() {
       console.error('Failed to fetch credit cards:', error);
     }
   };
+
   const fetchExpenses = async () => {
     setIsLoading(true);
     try {
@@ -190,17 +220,7 @@ export default function ExpensesPage() {
   };
 
   const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      "Food & Dining": "bg-primary/10 text-primary border-primary/20",
-      "Transportation": "bg-accent/10 text-accent border-accent/20",
-      "Entertainment": "bg-chart-3/10 text-chart-3 border-chart-3/20",
-      "Utilities": "bg-chart-4/10 text-chart-4 border-chart-4/20",
-      "Shopping": "bg-chart-5/10 text-chart-5 border-chart-5/20",
-      "Healthcare": "bg-red-500/10 text-red-500 border-red-500/20",
-      "Education": "bg-blue-500/10 text-blue-500 border-blue-500/20",
-      "Others": "bg-gray-500/10 text-gray-500 border-gray-500/20",
-    };
-    return colors[category] || colors["Others"];
+    return categoryObject?.find((cat) => cat.name === category)?.color || "#6B7280"; // Default gray
   };
 
   return (
@@ -331,7 +351,7 @@ export default function ExpensesPage() {
                                   </div>
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant="outline" className={getCategoryColor(expense.category)}>
+                                  <Badge variant="outline" style={{ backgroundColor: `${getCategoryColor(expense.category)}50` }}>
                                     {expense.category}
                                   </Badge>
                                 </TableCell>
