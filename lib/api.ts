@@ -71,6 +71,42 @@ export interface CreditCard {
   dueDate: number;
   creditLimit: number;
   currentBalance: number;
+  previousOutstanding: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Loan {
+  id: string;
+  userId: string;
+  name: string;
+  loanAmount: number;
+  interestRate: number;
+  emiAmount: number;
+  emiDate: number;
+  startDate: string;
+  endDate: string;
+  paymentMethod: string;
+  creditCardId?: string;
+  status: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SIP {
+  id: string;
+  userId: string;
+  name: string;
+  fundName: string;
+  sipAmount: number;
+  sipDate: number;
+  startDate: string;
+  endDate?: string;
+  paymentMethod: string;
+  creditCardId?: string;
+  status: string;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -415,6 +451,45 @@ export const api = {
     
     addPayment: (id: string, payment: { amount: number; date: string }) =>
       ApiClient.post(`/credit-card/${id}/payment`, payment),
+    
+    clearOutstanding: (id: string) =>
+      ApiClient.post(`/credit-cards/${id}/clear-outstanding`, {}),
+  },
+
+  // Loans
+  loans: {
+    getAll: () =>
+      ApiClient.get<Loan[]>('/loans'),
+    
+    create: (loan: Partial<Loan>) =>
+      ApiClient.post<Loan>('/loans', loan),
+    
+    update: (id: string, loan: Partial<Loan>) =>
+      ApiClient.patch<Loan>(`/loans/${id}`, loan),
+    
+    delete: (id: string) =>
+      ApiClient.delete(`/loans/${id}`),
+    
+    processEMIs: () =>
+      ApiClient.post('/loans/process-emis', {}),
+  },
+
+  // SIPs
+  sips: {
+    getAll: () =>
+      ApiClient.get<SIP[]>('/sips'),
+    
+    create: (sip: Partial<SIP>) =>
+      ApiClient.post<SIP>('/sips', sip),
+    
+    update: (id: string, sip: Partial<SIP>) =>
+      ApiClient.patch<SIP>(`/sips/${id}`, sip),
+    
+    delete: (id: string) =>
+      ApiClient.delete(`/sips/${id}`),
+    
+    processSIPs: () =>
+      ApiClient.post('/sips/process-sips', {}),
   },
 
   // Analytics

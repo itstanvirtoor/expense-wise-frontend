@@ -5,11 +5,13 @@ import Sidebar from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Calendar, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, BarChart3 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { 
+  Calendar, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, 
+  BarChart3, CreditCard, Wallet, Filter, X, ShoppingBag, Home, Car,
+  Coffee, Heart, BookOpen, Plane, Smartphone
+} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
 import { useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 import { useUser } from "@/contexts/UserContext";
@@ -30,6 +32,7 @@ interface TopExpense {
   amount: number;
   date: string;
   category: string;
+  paymentMethod: string;
 }
 
 interface MonthlyTrend {
@@ -58,41 +61,16 @@ export default function AnalyticsPage() {
   const { user: authUser } = useAuth();
   const { user, currency, timezone } = useUser();
   const [timeRange, setTimeRange] = useState("30days");
-  const [viewType, setViewType] = useState("category");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedPayment, setSelectedPayment] = useState<string>("all");
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showExpenses, setShowExpenses] = useState(true);
-  const [showIncome, setShowIncome] = useState(true);
   const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
-  const [period1, setPeriod1] = useState("30days");
-  const [period2, setPeriod2] = useState("7days");
-  const [period1Data, setPeriod1Data] = useState<AnalyticsData | null>(null);
-  const [period2Data, setPeriod2Data] = useState<AnalyticsData | null>(null);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAnalytics();
   }, [timeRange]);
-
-  useEffect(() => {
-    fetchComparisonData();
-  }, [period1, period2]);
-
-  const fetchComparisonData = async () => {
-    try {
-      const [p1Response, p2Response] = await Promise.all([
-        api.analytics.getOverview({ timeRange: period1 }),
-        api.analytics.getOverview({ timeRange: period2 })
-      ]);
-      if (p1Response.success && p1Response.data) {
-        setPeriod1Data(p1Response.data);
-      }
-      if (p2Response.success && p2Response.data) {
-        setPeriod2Data(p2Response.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch comparison data:', error);
-    }
-  };
 
   const fetchAnalytics = async () => {
     setIsLoading(true);
@@ -115,11 +93,117 @@ export default function AnalyticsPage() {
   const timeRanges = [
     { value: "7days", label: "Last 7 Days" },
     { value: "30days", label: "Last 30 Days" },
-    { value: "90days", label: "Last 3 Months" },
+    { value: "3months", label: "Last 3 Months" },
     { value: "6months", label: "Last 6 Months" },
     { value: "1year", label: "Last Year" },
-    { value: "custom", label: "Custom Range" },
   ];
+
+  // Filter data based on selections
+  const filteredData = useMemo(() => {
+    if (!analyticsData) return null;
+    
+    let filteredExpenses = analyticsData.topExpenses;
+
+    // Apply category filter
+    if (selectedCategory !== "all") {
+      filteredExpenses = filteredExpenses.filter(exp => exp.category === selectedCategory);
+    }
+
+    // Apply payment method filter
+    if (selectedPayment !== "all") {
+      filteredExpenses = filteredExpenses.filter(exp => exp.paymentMethod === selectedPayment);
+    }
+
+    // Calculate totals from filtered expenses for category/trends only
+    const filteredTotalAmount = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    
+    // Regenerate category breakdown from filtered expenses
+    const categoryMap = new Map<string, number>();
+    filteredExpenses.forEach((exp) => {
+      categoryMap.set(exp.category, (categoryMap.get(exp.category) || 0) + exp.amount);
+    });
+
+    // Get color mapping from original categories
+    const colorMap = new Map<string, string>();
+    analyticsData.categoryBreakdown.forEach(cat => {
+      colorMap.set(cat.category, cat.color);
+    });
+
+    // Create new category breakdown with filtered data
+    let recalculatedCategories: CategoryData[] = Array.from(categoryMap.entries()).map(([category, amount]) => ({
+      category,
+      amount,
+      percentage: filteredTotalAmount > 0 ? (amount / filteredTotalAmount) * 100 : 0,
+      trend: "up" as const,
+      trendValue: 0,
+      color: colorMap.get(category) || '#888888'
+    })).sort((a, b) => b.amount - a.amount);
+
+    // If no filtered expenses, show empty state with original categories at 0
+    if (filteredExpenses.length === 0 && (selectedCategory !== "all" || selectedPayment !== "all")) {
+      recalculatedCategories = analyticsData.categoryBreakdown.map(cat => ({
+        ...cat,
+        amount: 0,
+        percentage: 0
+      }));
+    }
+
+    // Calculate total budget from all months in the range
+    const totalBudget = analyticsData.monthlyTrends.reduce((sum, trend) => sum + trend.income, 0);
+
+    // Calculate budget utilization with filtered total
+    const budgetUtilization = totalBudget > 0 ? (filteredTotalAmount / totalBudget) * 100 : 0;
+    
+    // Calculate filtered monthly trends
+    const monthlyExpenseMap = new Map<string, number>();
+    filteredExpenses.forEach((exp) => {
+      const expDate = new Date(exp.date);
+      const year = expDate.getFullYear();
+      const month = String(expDate.getMonth() + 1).padStart(2, '0');
+      const monthKey = `${year}-${month}`;
+      
+      monthlyExpenseMap.set(monthKey, (monthlyExpenseMap.get(monthKey) || 0) + exp.amount);
+    });
+
+    const filteredMonthlyTrends = analyticsData.monthlyTrends.map(trend => ({
+      ...trend,
+      expenses: monthlyExpenseMap.get(trend.month) || 0
+    }));
+    
+    return {
+      ...analyticsData,
+      topExpenses: filteredExpenses,
+      categoryBreakdown: recalculatedCategories,
+      monthlyTrends: filteredMonthlyTrends,
+      filteredTotalAmount,
+      totalBudget,
+      insights: {
+        ...analyticsData.insights,
+        budgetUtilization
+      }
+    };
+  }, [analyticsData, selectedCategory, selectedPayment]);
+
+  // Get time period label
+  const timePeriodLabel = timeRanges.find(range => range.value === timeRange)?.label || "Selected Period";
+
+  const getCategoryIcon = (category: string) => {
+    const icons: { [key: string]: any } = {
+      'Food & Dining': Coffee,
+      'Transportation': Car,
+      'Entertainment': Smartphone,
+      'Shopping': ShoppingBag,
+      'Utilities': Home,
+      'Healthcare': Heart,
+      'Education': BookOpen,
+      'Travel': Plane,
+      'Subscription': CreditCard,
+      'Others': Wallet,
+    };
+    return icons[category] || Wallet;
+  };
+
+  const activeFiltersCount = [selectedCategory !== "all", selectedPayment !== "all"].filter(Boolean).length;
 
   return (
     <ProtectedRoute>
@@ -128,503 +212,364 @@ export default function AnalyticsPage() {
       <div className="flex flex-1">
         <Sidebar userRole={(user?.role.toLowerCase() as "user" | "admin") || "user"} />
         
-        <main className="flex-1 p-8 overflow-auto">
-          <div className="max-w-7xl mx-auto space-y-6">
+        <main className="flex-1 p-6 overflow-auto bg-muted/30">
+          <div className="max-w-[1600px] mx-auto space-y-5">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex flex-col gap-4">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
-                <p className="text-muted-foreground mt-2">
-                  Gain insights into your spending patterns
+                <h1 className="text-3xl font-bold tracking-tight">Expense Analytics</h1>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Comprehensive analysis of your spending patterns
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Select value={timeRange} onValueChange={setTimeRange}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeRanges.map(range => (
-                      <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button variant="outline">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Custom
-                </Button>
-              </div>
+
+              {/* Filter Section */}
+              <Card className="border-border/40 bg-card/50 backdrop-blur">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Filter className="h-4 w-4" />
+                      Filters:
+                    </div>
+                    
+                    <Select value={timeRange} onValueChange={setTimeRange}>
+                      <SelectTrigger className="w-[180px] h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timeRanges.map(range => (
+                          <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger className="w-[180px] h-9">
+                        <SelectValue placeholder="All Categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {analyticsData?.categoryBreakdown?.map((cat) => (
+                          <SelectItem key={cat.category} value={cat.category}>
+                            {cat.category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={selectedPayment} onValueChange={setSelectedPayment}>
+                      <SelectTrigger className="w-[180px] h-9">
+                        <SelectValue placeholder="All Payment Methods" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Payment Methods</SelectItem>
+                        <SelectItem value="Credit Card">Credit Card</SelectItem>
+                        <SelectItem value="Debit Card">Debit Card</SelectItem>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="UPI">UPI</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {activeFiltersCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCategory("all");
+                          setSelectedPayment("all");
+                        }}
+                        className="h-9"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Clear ({activeFiltersCount})
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Key Insights */}
             {isLoading ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
                 <p className="mt-4 text-muted-foreground">Loading analytics...</p>
               </div>
-            ) : analyticsData ? (
+            ) : filteredData ? (
               <>
+                {/* Key Metrics Grid */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  <Card className="border-border/40 bg-card/50 backdrop-blur">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Highest Spending Day</CardTitle>
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <Card className="border-border/40 bg-gradient-to-br from-blue-500/10 to-blue-600/5 backdrop-blur">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium">Total Spending</CardTitle>
+                      <DollarSign className="h-5 w-5 text-blue-500" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{analyticsData.insights.highestSpendingDay}</div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        +{analyticsData.insights.highestSpendingDayChange}% from last period
+                      <div className="text-3xl font-bold">{formatAmount(analyticsData.topExpenses.reduce((sum, exp) => sum + exp.amount, 0))}</div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {timePeriodLabel}
+                      </p>
+                      <div className="mt-3 h-1 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 transition-all"
+                          style={{ width: `${Math.min(analyticsData.insights.budgetUtilization, 100)}%` }}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-border/40 bg-gradient-to-br from-green-500/10 to-green-600/5 backdrop-blur">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium">Avg Transaction</CardTitle>
+                      <BarChart3 className="h-5 w-5 text-green-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{formatAmount(analyticsData.insights.averageTransaction)}</div>
+                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                        {analyticsData.insights.averageTransactionChange >= 0 ? (
+                          <TrendingUp className="h-3 w-3 text-red-500" />
+                        ) : (
+                          <TrendingDown className="h-3 w-3 text-green-500" />
+                        )}
+                        {Math.abs(analyticsData.insights.averageTransactionChange)}% vs last period
                       </p>
                     </CardContent>
                   </Card>
 
-                  <Card className="border-border/40 bg-card/50 backdrop-blur">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Average Transaction</CardTitle>
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{formatAmount(analyticsData.insights.averageTransaction)}</div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {analyticsData.insights.averageTransactionChange >= 0 ? '+' : ''}{analyticsData.insights.averageTransactionChange}% from last period
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-border/40 bg-card/50 backdrop-blur">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <Card className="border-border/40 bg-gradient-to-br from-purple-500/10 to-purple-600/5 backdrop-blur">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
                       <CardTitle className="text-sm font-medium">Most Used Payment</CardTitle>
-                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                      <CreditCard className="h-5 w-5 text-purple-500" />
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{analyticsData.insights.mostUsedPayment}</div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {analyticsData.insights.mostUsedPaymentPercentage.toFixed(0)}% of transactions
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {timePeriodLabel}
                       </p>
+                      <div className="mt-3 h-1 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-purple-500 transition-all"
+                          style={{ width: `${analyticsData.insights.mostUsedPaymentPercentage}%` }}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="border-border/40 bg-card/50 backdrop-blur">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Budget Utilization</CardTitle>
-                      <PieChartIcon className="h-4 w-4 text-muted-foreground" />
+                  <Card className="border-border/40 bg-gradient-to-br from-orange-500/10 to-orange-600/5 backdrop-blur">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium">Peak Spending Day</CardTitle>
+                      <Calendar className="h-5 w-5 text-orange-500" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{analyticsData.insights.budgetUtilization.toFixed(0)}%</div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        +{analyticsData.insights.budgetUtilizationChange}% from last period
+                      <div className="text-2xl font-bold">{analyticsData.insights.highestSpendingDay}</div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {timePeriodLabel}
                       </p>
                     </CardContent>
                   </Card>
                 </div>
 
-            {/* Main Analytics Tabs */}
-            <Tabs defaultValue="overview" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="category">By Category</TabsTrigger>
-                <TabsTrigger value="trends">Trends</TabsTrigger>
-                <TabsTrigger value="comparison">Compare</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="overview" className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Card className="border-border/40 bg-card/50 backdrop-blur">
-                    <CardHeader>
-                      <CardTitle>Spending Overview</CardTitle>
-                      <CardDescription>Your expense distribution</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {analyticsData.categoryBreakdown?.map((category, i) => (
-                          <div key={i} className="space-y-2">
-                            <div className="flex items-center justify-between text-sm">
-                              <div className="flex items-center gap-2">
-                                <div 
-                                  className="h-3 w-3 rounded-full" 
-                                  style={{ backgroundColor: category?.color ?? '#3b82f6' }}
-                                />
-                                <span className="font-medium">{category.category}</span>
+                {/* Main Content Grid */}
+                <div className="grid gap-5 lg:grid-cols-3">
+                  {/* Left Column - Category Breakdown */}
+                  <div className="lg:col-span-2 space-y-5">
+                    {/* Category Distribution */}
+                    <Card className="border-border/40 bg-card/50 backdrop-blur">
+                      <CardHeader>
+                        <CardTitle>Category Distribution</CardTitle>
+                        <CardDescription>Spending breakdown by category</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 gap-4">
+                          {filteredData.categoryBreakdown?.map((category, i) => {
+                            const Icon = getCategoryIcon(category.category);
+                            const isHovered = hoveredCategory === category.category;
+                            
+                            return (
+                              <div
+                                key={i}
+                                className={`p-4 rounded-lg border transition-all cursor-pointer ${
+                                  isHovered 
+                                    ? 'border-primary bg-primary/5 scale-105' 
+                                    : 'border-border/40 bg-background/30 hover:border-border hover:bg-background/50'
+                                }`}
+                                onMouseEnter={() => setHoveredCategory(category.category)}
+                                onMouseLeave={() => setHoveredCategory(null)}
+                              >
+                                <div className="flex items-start justify-between mb-3">
+                                  <div 
+                                    className="p-2 rounded-lg"
+                                    style={{ backgroundColor: `${category.color}20` }}
+                                  >
+                                    <Icon 
+                                      className="h-5 w-5" 
+                                      style={{ color: category.color }}
+                                    />
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-bold text-lg">{category.percentage.toFixed(0)}%</div>
+                                    <div className="text-xs text-muted-foreground">of total</div>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="font-semibold text-sm">{category.category}</div>
+                                  <div className="text-xl font-bold">{formatAmount(category.amount)}</div>
+                                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full transition-all duration-500"
+                                      style={{ 
+                                        width: `${category.percentage}%`,
+                                        backgroundColor: category.color
+                                      }}
+                                    />
+                                  </div>
+                                </div>
                               </div>
-                              <span className="text-muted-foreground">{formatAmount(category.amount)}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="h-2 bg-muted rounded-full overflow-hidden flex-1">
-                                <div
-                                  className="h-full transition-all duration-500"
-                                  style={{ 
-                                    width: `${category.percentage}%`,
-                                    backgroundColor: category?.color ?? '#3b82f6'
-                                  }}
-                                />
-                              </div>
-                              <span className="text-xs text-muted-foreground w-12 text-right">
-                                {category.percentage.toFixed(1)}%
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                            );
+                          })}
                         </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
 
-                  <Card className="border-border/40 bg-card/50 backdrop-blur">
-                    <CardHeader>
-                      <CardTitle>Top Expenses</CardTitle>
-                      <CardDescription>Your largest transactions</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {analyticsData.topExpenses?.slice(0, 5).map((expense) => (
-                          <div key={expense.id} className="flex items-center justify-between pb-4 border-b border-border/40 last:border-0 last:pb-0">
-                            <div className="flex-1">
-                              <p className="font-medium text-sm">{expense.description}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="text-xs text-muted-foreground">
-                                  {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                </p>
-                                <Badge variant="outline" className="text-xs">
-                                  {expense.category}
-                                </Badge>
-                              </div>
-                            </div>
-                            <p className="font-semibold text-red-500">{formatAmount(expense.amount)}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Monthly Trend Chart Placeholder */}
-                <Card className="border-border/40 bg-card/50 backdrop-blur">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>Monthly Trends</CardTitle>
-                        <CardDescription>Income vs Expenses over time</CardDescription>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={showExpenses ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setShowExpenses(!showExpenses)}
-                        >
-                          Expenses
-                        </Button>
-                        <Button
-                          variant={showIncome ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setShowIncome(!showIncome)}
-                        >
-                          Income
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-80 flex items-end justify-center gap-4 px-4">
-                      {analyticsData.monthlyTrends?.map((data, i) => {
-                        const maxValue = Math.max(
-                          ...(analyticsData.monthlyTrends?.map(d => {
-                            const values = [];
-                            if (showExpenses) values.push(d.expenses);
-                            if (showIncome) values.push(d.income);
-                            return Math.max(...values, 1);
-                          }) || [1])
-                        );
-                        return (
-                          <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                            <div 
-                              className="w-full relative group" 
-                              style={{ height: '250px' }}
-                              onMouseEnter={() => setHoveredMonth(i)}
-                              onMouseLeave={() => setHoveredMonth(null)}
-                            >
-                              {/* Income bar (rendered first, will be below) */}
-                              {showIncome && (
-                                <div
-                                  className="absolute bottom-0 w-full bg-gradient-to-t from-accent to-accent/50 rounded-t-md transition-opacity cursor-pointer"
-                                  style={{ 
-                                    height: `${(data.income / maxValue) * 250}px`,
-                                    opacity: showExpenses ? 0.7 : 1
-                                  }}
-                                />
-                              )}
-                              {/* Expenses bar (rendered second, will be on top) */}
-                              {showExpenses && (
-                                <div
-                                  className="absolute bottom-0 w-full bg-gradient-to-t from-primary to-primary/50 rounded-t-md transition-opacity cursor-pointer"
-                                  style={{ 
-                                    height: `${(data.expenses / maxValue) * 250}px`,
-                                    opacity: showIncome ? 0.7 : 1
-                                  }}
-                                />
-                              )}
-                              {/* Hover Tooltip */}
-                              {hoveredMonth === i && (
-                                <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-popover border border-border rounded-lg shadow-lg p-3 z-10 whitespace-nowrap">
-                                  <p className="font-semibold text-sm mb-2">{data.month}</p>
-                                  {showExpenses && (
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <div className="h-2 w-2 rounded bg-primary" />
-                                      <span className="text-xs">Expenses: {formatAmount(data.expenses)}</span>
-                                    </div>
+                    {/* Monthly Trends */}
+                    <Card className="border-border/40 bg-card/50 backdrop-blur">
+                      <CardHeader>
+                        <CardTitle>Spending Trends</CardTitle>
+                        <CardDescription>Monthly expense patterns</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-64 flex items-end justify-between gap-2 px-2">
+                          {filteredData.monthlyTrends?.map((data, i) => {
+                            const maxValue = Math.max(...(filteredData.monthlyTrends?.map(d => d.expenses) || []), 1);
+                            const heightPercent = maxValue > 0 ? (data.expenses / maxValue) * 100 : 0;
+                            
+                            return (
+                              <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                                <div 
+                                  className="w-full relative group cursor-pointer" 
+                                  style={{ height: '200px' }}
+                                  onMouseEnter={() => setHoveredMonth(i)}
+                                  onMouseLeave={() => setHoveredMonth(null)}
+                                >
+                                  {data.expenses > 0 && (
+                                    <div
+                                      className="absolute bottom-0 w-full bg-gradient-to-t from-primary to-primary/50 rounded-t-lg transition-all hover:from-primary/90 hover:to-primary/60"
+                                      style={{ height: `${heightPercent}%` }}
+                                    />
                                   )}
-                                  {showIncome && (
-                                    <div className="flex items-center gap-2">
-                                      <div className="h-2 w-2 rounded bg-accent" />
-                                      <span className="text-xs">Income: {formatAmount(data.income)}</span>
+                                  
+                                  {hoveredMonth === i && (
+                                    <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-popover border border-border rounded-lg shadow-xl p-3 z-10 whitespace-nowrap">
+                                      <p className="font-semibold text-xs mb-1">{data.month}</p>
+                                      <p className="text-sm font-bold">{formatAmount(data.expenses)}</p>
                                     </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                            <span className="text-xs text-muted-foreground">{data.month}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex justify-center gap-6 mt-6">
-                      {showExpenses && (
-                        <div className="flex items-center gap-2">
-                          <div className="h-3 w-3 rounded bg-primary" />
-                          <span className="text-sm text-muted-foreground">Expenses</span>
+                                <span className="text-[10px] text-muted-foreground font-medium">
+                                  {data.month.split('-')[1]}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      )}
-                      {showIncome && (
-                        <div className="flex items-center gap-2">
-                          <div className="h-3 w-3 rounded bg-accent" />
-                          <span className="text-sm text-muted-foreground">Income</span>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-              <TabsContent value="category" className="space-y-4">
-                <Card className="border-border/40 bg-card/50 backdrop-blur">
-                  <CardHeader>
-                    <CardTitle>Category Analysis</CardTitle>
-                    <CardDescription>Detailed breakdown by category</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      {analyticsData?.categoryBreakdown?.map((category, i) => (
-                        <div key={i} className="space-y-3 p-4 rounded-lg border border-border/40 bg-background/30">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`h-10 w-10 rounded-lg flex items-center justify-center`} style={{ backgroundColor: category?.color ?? '#3b82f6' }}>
-                                <span className="text-white font-semibold">{category.percentage.toFixed(0)}%</span>
-                              </div>
-                              <div>
-                                <p className="font-semibold">{category.category}</p>
-                                <p className="text-sm text-muted-foreground">{formatAmount(category.amount)} spent</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {category.trend === "up" ? (
-                                <TrendingUp className="h-4 w-4 text-red-500" />
-                              ) : (
-                                <TrendingDown className="h-4 w-4 text-green-500" />
-                              )}
-                              <span className={`text-sm font-medium ${category.trend === "up" ? "text-red-500" : "text-green-500"}`}>
-                                {category.trendValue}%
-                              </span>
-                            </div>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className={`h-full ${category.color} transition-all duration-500`}
-                              style={{ 
-                                width: `${category.percentage}%`,
-                                backgroundColor: category?.color ?? '#3b82f6'
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="trends" className="space-y-4">
-                <Card className="border-border/40 bg-card/50 backdrop-blur">
-                  <CardHeader>
-                    <CardTitle>Spending Trends</CardTitle>
-                    <CardDescription>Track your spending patterns over time</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      {analyticsData.categoryBreakdown?.map((category, i) => (
-                        <div key={i} className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div 
-                                className="h-10 w-10 rounded-lg flex items-center justify-center"
-                                style={{ 
-                                  backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
-                                        category.color.includes('purple') ? '#a855f7' : 
-                                        category.color.includes('green') ? '#22c55e' : 
-                                        category.color.includes('orange') ? '#f97316' : 
-                                        category.color.includes('pink') ? '#ec4899' : 
-                                        category.color.includes('yellow') ? '#eab308' : '#6366f1'
-                                }}
-                              >
-                                <span className="text-white font-semibold text-sm">{category.percentage.toFixed(0)}%</span>
-                              </div>
-                              <div>
-                                <p className="font-semibold">{category.category}</p>
-                                <p className="text-sm text-muted-foreground">{formatAmount(category.amount)} spent</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {category.trend === "up" ? (
-                                <TrendingUp className="h-4 w-4 text-red-500" />
-                              ) : (
-                                <TrendingDown className="h-4 w-4 text-green-500" />
-                              )}
-                              <span className={`text-sm font-medium ${category.trend === "up" ? "text-red-500" : "text-green-500"}`}>
-                                {category.trendValue}%
-                              </span>
-                            </div>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full transition-all duration-500"
-                              style={{ 
-                                width: `${category.percentage}%`,
-                                backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
-                                      category.color.includes('purple') ? '#a855f7' : 
-                                      category.color.includes('green') ? '#22c55e' : 
-                                      category.color.includes('orange') ? '#f97316' : 
-                                      category.color.includes('pink') ? '#ec4899' : 
-                                      category.color.includes('yellow') ? '#eab308' : '#6366f1'
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="comparison" className="space-y-4">
-                <Card className="border-border/40 bg-card/50 backdrop-blur">
-                  <CardHeader>
-                    <CardTitle>Period Comparison</CardTitle>
-                    <CardDescription>Compare spending across different time periods</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Period 1</Label>
-                          <Select value={period1} onValueChange={setPeriod1}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="7days">Last 7 Days</SelectItem>
-                              <SelectItem value="30days">Last 30 Days</SelectItem>
-                              <SelectItem value="90days">Last 3 Months</SelectItem>
-                              <SelectItem value="6months">Last 6 Months</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Period 2</Label>
-                          <Select value={period2} onValueChange={setPeriod2}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="7days">Last 7 Days</SelectItem>
-                              <SelectItem value="30days">Last 30 Days</SelectItem>
-                              <SelectItem value="90days">Last 3 Months</SelectItem>
-                              <SelectItem value="6months">Last 6 Months</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      
-                      <div className="grid md:grid-cols-2 gap-6 mt-6">
-                        {/* Period 1 */}
+                  {/* Right Column - Top Expenses & Insights */}
+                  <div className="space-y-5">
+                    {/* Budget Overview */}
+                    <Card className="border-border/40 bg-card/50 backdrop-blur">
+                      <CardHeader>
+                        <CardTitle className="text-lg">Budget Status</CardTitle>
+                      </CardHeader>
+                      <CardContent>
                         <div className="space-y-4">
-                          <div className="text-center pb-3 border-b">
-                            <p className="font-semibold">
-                              {period1 === "7days" ? "Last 7 Days" : period1 === "30days" ? "Last 30 Days" : period1 === "90days" ? "Last 3 Months" : "Last 6 Months"}
-                            </p>
-                            <p className="text-2xl font-bold mt-1">
-                              {formatAmount(period1Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
-                            </p>
+                          <div className="relative h-40 flex items-center justify-center">
+                            <svg className="transform -rotate-90 h-40 w-40">
+                              <circle
+                                cx="80"
+                                cy="80"
+                                r="70"
+                                stroke="currentColor"
+                                strokeWidth="12"
+                                fill="transparent"
+                                className="text-muted"
+                              />
+                              <circle
+                                cx="80"
+                                cy="80"
+                                r="70"
+                                stroke="currentColor"
+                                strokeWidth="12"
+                                fill="transparent"
+                                strokeDasharray={`${2 * Math.PI * 70}`}
+                                strokeDashoffset={`${2 * Math.PI * 70 * (1 - Math.min(filteredData.insights.budgetUtilization / 100, 1))}`}
+                                className={filteredData.insights.budgetUtilization > 90 ? "text-red-500" : filteredData.insights.budgetUtilization > 70 ? "text-orange-500" : "text-green-500"}
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                            <div className="absolute flex flex-col items-center">
+                              <span className="text-3xl font-bold">{filteredData.insights.budgetUtilization.toFixed(0)}%</span>
+                              <span className="text-xs text-muted-foreground">Used</span>
+                            </div>
                           </div>
-                          {period1Data?.categoryBreakdown?.slice(0, 5).map((category, i) => (
-                            <div key={i} className="space-y-2">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium">{category.category}</span>
-                                <span className="text-muted-foreground">{formatAmount(category.amount)}</span>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Spent:</span>
+                              <span className="font-semibold">{formatAmount(filteredData.filteredTotalAmount)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Budget:</span>
+                              <span className="font-semibold">{formatAmount(filteredData.totalBudget)}</span>
+                            </div>
+                            <div className="flex justify-between pt-2 border-t">
+                              <span className="text-muted-foreground">Remaining:</span>
+                              <span className={`font-bold ${filteredData.totalBudget - filteredData.filteredTotalAmount > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {formatAmount(Math.max(0, filteredData.totalBudget - filteredData.filteredTotalAmount))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Top Expenses */}
+                    <Card className="border-border/40 bg-card/50 backdrop-blur">
+                      <CardHeader>
+                        <CardTitle className="text-lg">Top Expenses</CardTitle>
+                        <CardDescription>Largest transactions</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {filteredData.topExpenses?.slice(0, 8).map((expense, i) => (
+                            <div 
+                              key={expense.id} 
+                              className="flex items-center gap-3 p-3 rounded-lg border border-border/40 bg-background/30 hover:bg-background/50 hover:border-border transition-all"
+                            >
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                <span className="text-xs font-bold text-primary">#{i + 1}</span>
                               </div>
-                              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className="h-full transition-all"
-                                  style={{ 
-                                    width: `${category.percentage}%`,
-                                    backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
-                                          category.color.includes('purple') ? '#a855f7' : 
-                                          category.color.includes('green') ? '#22c55e' : 
-                                          category.color.includes('orange') ? '#f97316' : 
-                                          category.color.includes('pink') ? '#ec4899' : 
-                                          category.color.includes('yellow') ? '#eab308' : '#6366f1'
-                                  }}
-                                />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{expense.description}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  </p>
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                    {expense.category}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="font-bold text-sm text-red-500">{formatAmount(expense.amount)}</p>
                               </div>
                             </div>
                           ))}
                         </div>
-
-                        {/* Period 2 */}
-                        <div className="space-y-4">
-                          <div className="text-center pb-3 border-b">
-                            <p className="font-semibold">
-                              {period2 === "7days" ? "Last 7 Days" : period2 === "30days" ? "Last 30 Days" : period2 === "90days" ? "Last 3 Months" : "Last 6 Months"}
-                            </p>
-                            <p className="text-2xl font-bold mt-1">
-                              {formatAmount(period2Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
-                            </p>
-                          </div>
-                          {period2Data?.categoryBreakdown?.slice(0, 5).map((category, i) => (
-                            <div key={i} className="space-y-2">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium">{category.category}</span>
-                                <span className="text-muted-foreground">{formatAmount(category.amount)}</span>
-                              </div>
-                              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className="h-full transition-all"
-                                  style={{ 
-                                    width: `${category.percentage}%`,
-                                    backgroundColor: category.color.replace('bg-', '').includes('blue') ? '#3b82f6' : 
-                                          category.color.includes('purple') ? '#a855f7' : 
-                                          category.color.includes('green') ? '#22c55e' : 
-                                          category.color.includes('orange') ? '#f97316' : 
-                                          category.color.includes('pink') ? '#ec4899' : 
-                                          category.color.includes('yellow') ? '#eab308' : '#6366f1'
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
               </>
             ) : (
               <div className="text-center py-12">

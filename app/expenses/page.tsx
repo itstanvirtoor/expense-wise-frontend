@@ -11,14 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight, CreditCard as CreditCardIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
-import { api, Expense, CreditCard } from "@/lib/api";
+import { api, Expense } from "@/lib/api";
 import { ProtectedRoute } from "@/contexts/AuthContext";
 import { useUser } from "@/contexts/UserContext";
 import { formatCurrency, formatDate } from "@/lib/timezone";
 
-const categories = ["Food & Dining", "Transportation", "Entertainment", "Utilities", "Shopping", "Healthcare", "Education", "Others"];
+const categories = ["Food & Dining", "Transportation", "Entertainment", "Utilities", "Shopping", "Healthcare", "Education", "Credit Card Repayment", "Others"];
 const paymentMethods = ["Cash", "Credit Card", "Debit Card", "UPI", "Net Banking"];
 
 interface PaginationInfo {
@@ -31,7 +31,6 @@ interface PaginationInfo {
 export default function ExpensesPage() {
   const { user, currency, timezone } = useUser();
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 10,
@@ -56,20 +55,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     fetchExpenses();
-    fetchCreditCards();
   }, [pagination.page, pagination.limit, filterCategory, searchQuery]);
-
-  const fetchCreditCards = async () => {
-    try {
-      const response = await api.creditCards.getAll();
-      if (response.success && response.data) {
-        const cards = response.data.cards || response.data;
-        setCreditCards(Array.isArray(cards) ? cards : []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch credit cards:', error);
-    }
-  };
 
   const fetchExpenses = async () => {
     setIsLoading(true);
@@ -228,90 +214,6 @@ export default function ExpensesPage() {
                 Add Expense
               </Button>
             </div>
-
-            {/* Credit Cards Section */}
-            {creditCards && creditCards.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="text-lg font-semibold">Your Credit Cards</h2>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {creditCards.map((card) => {
-                  const utilizationPercentage = card.creditLimit > 0 ? (card.currentBalance / card.creditLimit) * 100 : 0;
-                  return (
-                    <Card key={card.id} className="border-border/40 bg-gradient-to-br from-card/50 to-card/30 backdrop-blur">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <CreditCardIcon className="h-5 w-5 text-primary" />
-                            <CardTitle className="text-lg">{card.name}</CardTitle>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {card.issuer}
-                          </Badge>
-                        </div>
-                        <CardDescription>**** **** **** {card.lastFourDigits}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Previous Outstanding</span>
-                            <span className="font-semibold text-red-500">
-                              {formatAmount(card.currentBalance * 0.75, currency)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Current Outstanding</span>
-                            <span className="font-semibold text-orange-500">
-                              {formatAmount(card.currentBalance, currency)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-sm border-t border-border/40 pt-2 mt-2">
-                            <span className="text-muted-foreground">Credit Limit</span>
-                            <span className="font-semibold">
-                              {formatAmount(card.creditLimit, currency)}
-                            </span>
-                          </div>
-                          <div className="pt-2">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-muted-foreground">Current Utilization</span>
-                              <span className={`font-medium ${
-                                utilizationPercentage > 80 ? 'text-red-500' : 
-                                utilizationPercentage > 50 ? 'text-yellow-500' : 'text-green-500'
-                              }`}>
-                                {utilizationPercentage.toFixed(1)}%
-                              </span>
-                            </div>
-                            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full transition-all ${
-                                  utilizationPercentage > 80 ? 'bg-red-500' : 
-                                  utilizationPercentage > 50 ? 'bg-yellow-500' : 'bg-green-500'
-                                }`}
-                                style={{ width: `${Math.min(utilizationPercentage, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="pt-2 border-t border-border/40">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Billing Cycle</span>
-                            <span className="font-medium">
-                              {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.billingCycle), timezone)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-xs mt-1">
-                            <span className="text-muted-foreground">Due Date</span>
-                            <span className="font-medium">
-                              {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.dueDate), timezone)}
-                            </span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-                </div>
-              </div>
-            )}
 
             {/* Filters and Search */}
             <Card className="border-border/40 bg-card/50 backdrop-blur">

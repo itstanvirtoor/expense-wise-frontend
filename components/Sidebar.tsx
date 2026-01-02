@@ -10,6 +10,8 @@ import {
   Settings,
   Users,
   TrendingUp,
+  CreditCard,
+  Landmark,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -22,6 +24,9 @@ export default function Sidebar({ userRole = "user" }: SidebarProps) {
   const userNavItems = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/expenses", label: "Expenses", icon: Receipt },
+    { href: "/credit-cards", label: "Credit Cards", icon: CreditCard },
+    { href: "/loans", label: "Loans & EMI", icon: Landmark },
+    { href: "/sips", label: "SIPs & Mutual Funds", icon: TrendingUp },
     { href: "/analytics", label: "Analytics", icon: PieChart },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
@@ -29,7 +34,7 @@ export default function Sidebar({ userRole = "user" }: SidebarProps) {
   const adminNavItems = [
     { href: "/dashboard/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/dashboard/admin/users", label: "Users", icon: Users },
-    { href: "/dashboard/admin/analytics", label: "Analytics", icon: TrendingUp },
+    { href: "/dashboard/admin/analytics", label: "Analytics", icon: PieChart },
     { href: "/dashboard/admin/settings", label: "Settings", icon: Settings },
   ];
 

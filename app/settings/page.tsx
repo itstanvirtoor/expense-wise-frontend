@@ -11,30 +11,17 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Plus, Pencil, Trash2, Bell, Lock, User, Palette, Calendar, Globe, CreditCard as CreditCardIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Bell, Lock, User, Palette, Calendar, Globe } from "lucide-react";
 import { useState, useEffect } from "react";
 import { LOCATIONS, getLocationConfig, formatCurrency, formatDate } from "@/lib/timezone";
 import { api } from "@/lib/api";
 import type { User as UserType } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 
-interface CreditCardData {
-  id: string;
-  name: string;
-  lastFourDigits: string;
-  billingCycle: number;
-  dueDate: number;
-  creditLimit: number;
-  currentBalance: number;
-  issuer: string;
-}
-
 export default function SettingsPage() {
   const { refreshUser, currency, timezone } = useUser();
   const [user, setUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  const [cards, setCards] = useState<CreditCardData[]>([]);
 
   const [profileForm, setProfileForm] = useState({
     name: "",
@@ -46,18 +33,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchUserProfile();
-    fetchCreditCards();
   }, []);
-
-  const fetchCreditCards = async () => {
-    try {
-      const response = await api.creditCards.getAll();
-      const cardsData = response.data.cards || response.data;
-      setCards(Array.isArray(cardsData) ? cardsData : []);
-    } catch (error) {
-      console.error("Failed to fetch credit cards:", error);
-    }
-  };
 
   const fetchUserProfile = async () => {
     try {
@@ -111,8 +87,6 @@ export default function SettingsPage() {
     }
   };
 
-  const [isCardDialogOpen, setIsCardDialogOpen] = useState(false);
-  const [editingCard, setEditingCard] = useState<CreditCardData | null>(null);
   const [notifications, setNotifications] = useState({
     emailNotifications: true,
     budgetAlerts: true,
@@ -120,113 +94,6 @@ export default function SettingsPage() {
     weeklyReport: false,
     monthlyReport: true,
   });
-
-  const [cardForm, setCardForm] = useState({
-    name: "",
-    lastFourDigits: "",
-    billingCycle: "1",
-    dueDate: "25",
-    creditLimit: "",
-    currentBalance: "",
-    issuer: "",
-  });
-
-  const handleOpenCardDialog = (card?: CreditCardData) => {
-    if (card) {
-      setEditingCard(card);
-      setCardForm({
-        name: card.name,
-        lastFourDigits: card.lastFourDigits,
-        billingCycle: card.billingCycle.toString(),
-        dueDate: card.dueDate.toString(),
-        creditLimit: card.creditLimit.toString(),
-        currentBalance: card.currentBalance.toString(),
-        issuer: card.issuer,
-      });
-    } else {
-      setEditingCard(null);
-      setCardForm({
-        name: "",
-        lastFourDigits: "",
-        billingCycle: "1",
-        dueDate: "25",
-        creditLimit: "",
-        currentBalance: "",
-        issuer: "",
-      });
-    }
-    setIsCardDialogOpen(true);
-  };
-
-  const handleSubmitCard = async () => {
-    if (!cardForm.name || !cardForm.lastFourDigits || !cardForm.issuer) {
-      alert("Please fill all required fields");
-      return;
-    }
-
-    try {
-      const cardPayload = {
-        name: cardForm.name,
-        lastFourDigits: cardForm.lastFourDigits,
-        billingCycle: parseInt(cardForm.billingCycle),
-        dueDate: parseInt(cardForm.dueDate),
-        creditLimit: parseFloat(cardForm.creditLimit) || 0,
-        currentBalance: parseFloat(cardForm.currentBalance) || 0,
-        issuer: cardForm.issuer,
-      };
-
-      if (editingCard) {
-        await api.creditCards.update(editingCard.id, cardPayload);
-      } else {
-        await api.creditCards.create(cardPayload);
-      }
-
-      setIsCardDialogOpen(false);
-      fetchCreditCards(); // Refresh the list
-    } catch (error) {
-      console.error("Failed to save credit card:", error);
-      alert("Failed to save credit card. Please try again.");
-    }
-  };
-
-  const handleDeleteCard = async (id: string) => {
-    if (confirm("Are you sure you want to delete this credit card?")) {
-      try {
-        await api.creditCards.delete(id);
-        fetchCreditCards(); // Refresh the list
-      } catch (error) {
-        console.error("Failed to delete credit card:", error);
-        alert("Failed to delete credit card. Please try again.");
-      }
-    }
-  };
-
-  const calculateNextDueDate = (billingCycle: number, dueDate: number) => {
-    const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    
-    let nextDue = new Date(currentYear, currentMonth, dueDate);
-    if (nextDue < today) {
-      nextDue = new Date(currentYear, currentMonth + 1, dueDate);
-    }
-    
-    return nextDue.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  const getDaysUntilDue = (dueDate: number) => {
-    const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    
-    let nextDue = new Date(currentYear, currentMonth, dueDate);
-    if (nextDue < today) {
-      nextDue = new Date(currentYear, currentMonth + 1, dueDate);
-    }
-    
-    const diff = nextDue.getTime() - today.getTime();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
-  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -240,16 +107,12 @@ export default function SettingsPage() {
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
               <p className="text-muted-foreground mt-2">
-                Manage your account, preferences, and credit cards
+                Manage your account and preferences
               </p>
             </div>
 
-            <Tabs defaultValue="cards" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-5 lg:w-[700px]">
-                <TabsTrigger value="cards">
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Cards
-                </TabsTrigger>
+            <Tabs defaultValue="profile" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
                 <TabsTrigger value="profile">
                   <User className="h-4 w-4 mr-2" />
                   Profile
@@ -267,221 +130,6 @@ export default function SettingsPage() {
                   Theme
                 </TabsTrigger>
               </TabsList>
-
-              {/* Credit Cards Tab */}
-              <TabsContent value="cards" className="space-y-4">
-                <Card className="border-border/40 bg-card/50 backdrop-blur">
-                  <CardHeader>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <CardTitle>Credit Card Management</CardTitle>
-                        <CardDescription>Track billing cycles and payment due dates</CardDescription>
-                      </div>
-                      <Dialog open={isCardDialogOpen} onOpenChange={setIsCardDialogOpen}>
-                        <DialogTrigger asChild>
-                          <Button onClick={() => handleOpenCardDialog()} className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Card
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[500px]">
-                          <DialogHeader>
-                            <DialogTitle>{editingCard ? "Edit Credit Card" : "Add Credit Card"}</DialogTitle>
-                            <DialogDescription>
-                              {editingCard ? "Update your credit card details." : "Add a new credit card to track."}
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                              <Label htmlFor="cardName">Card Name *</Label>
-                              <Input
-                                id="cardName"
-                                placeholder="e.g., Chase Sapphire"
-                                value={cardForm.name}
-                                onChange={(e) => setCardForm({ ...cardForm, name: e.target.value })}
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label htmlFor="issuer">Card Issuer *</Label>
-                              <Select value={cardForm.issuer} onValueChange={(value) => setCardForm({ ...cardForm, issuer: value })}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select issuer" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Visa">Visa</SelectItem>
-                                  <SelectItem value="Mastercard">Mastercard</SelectItem>
-                                  <SelectItem value="American Express">American Express</SelectItem>
-                                  <SelectItem value="Discover">Discover</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="grid gap-2">
-                              <Label htmlFor="lastFour">Last 4 Digits *</Label>
-                              <Input
-                                id="lastFour"
-                                placeholder="1234"
-                                maxLength={4}
-                                value={cardForm.lastFourDigits}
-                                onChange={(e) => setCardForm({ ...cardForm, lastFourDigits: e.target.value.replace(/\D/g, '') })}
-                              />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="grid gap-2">
-                                <Label htmlFor="billingCycle">Billing Cycle Day</Label>
-                                <Input
-                                  id="billingCycle"
-                                  type="number"
-                                  min="1"
-                                  max="31"
-                                  value={cardForm.billingCycle}
-                                  onChange={(e) => setCardForm({ ...cardForm, billingCycle: e.target.value })}
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label htmlFor="dueDate">Payment Due Day</Label>
-                                <Input
-                                  id="dueDate"
-                                  type="number"
-                                  min="1"
-                                  max="31"
-                                  value={cardForm.dueDate}
-                                  onChange={(e) => setCardForm({ ...cardForm, dueDate: e.target.value })}
-                                />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="grid gap-2">
-                                <Label htmlFor="creditLimit">Credit Limit</Label>
-                                <Input
-                                  id="creditLimit"
-                                  type="number"
-                                  placeholder="10000"
-                                  value={cardForm.creditLimit}
-                                  onChange={(e) => setCardForm({ ...cardForm, creditLimit: e.target.value })}
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label htmlFor="currentBalance">Current Balance</Label>
-                                <Input
-                                  id="currentBalance"
-                                  type="number"
-                                  placeholder="2500"
-                                  value={cardForm.currentBalance}
-                                  onChange={(e) => setCardForm({ ...cardForm, currentBalance: e.target.value })}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsCardDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSubmitCard} className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
-                              {editingCard ? "Update" : "Add"} Card
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {cards.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed border-border/40 rounded-lg">
-                        <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">No credit cards added yet</p>
-                        <p className="text-sm text-muted-foreground mt-2">Add your first card to track billing cycles</p>
-                      </div>
-                    ) : (
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {cards.map((card) => {
-                          const utilizationPercentage = card.creditLimit > 0 ? (card.currentBalance / card.creditLimit) * 100 : 0;
-                          
-                          return (
-                            <Card key={card.id} className="border-border/40 bg-gradient-to-br from-card/50 to-card/30 backdrop-blur">
-                              <CardHeader className="pb-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <CreditCardIcon className="h-5 w-5 text-primary" />
-                                    <CardTitle className="text-lg">{card.name}</CardTitle>
-                                  </div>
-                                  <Badge variant="outline" className="text-xs">
-                                    {card.issuer}
-                                  </Badge>
-                                </div>
-                                <CardDescription>**** **** **** {card.lastFourDigits}</CardDescription>
-                              </CardHeader>
-                              <CardContent className="space-y-3">
-                                <div className="space-y-2">
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Previous Outstanding</span>
-                                    <span className="font-semibold text-red-500">
-                                      {formatCurrency(card.currentBalance * 0.75, currency)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Current Outstanding</span>
-                                    <span className="font-semibold text-orange-500">
-                                      {formatCurrency(card.currentBalance, currency)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between text-sm border-t border-border/40 pt-2 mt-2">
-                                    <span className="text-muted-foreground">Credit Limit</span>
-                                    <span className="font-semibold">
-                                      {formatCurrency(card.creditLimit, currency)}
-                                    </span>
-                                  </div>
-                                  <div className="pt-2">
-                                    <div className="flex justify-between text-xs mb-1">
-                                      <span className="text-muted-foreground">Current Utilization</span>
-                                      <span className={`font-medium ${
-                                        utilizationPercentage > 80 ? 'text-red-500' : 
-                                        utilizationPercentage > 50 ? 'text-yellow-500' : 'text-green-500'
-                                      }`}>
-                                        {utilizationPercentage.toFixed(1)}%
-                                      </span>
-                                    </div>
-                                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                      <div
-                                        className={`h-full transition-all ${
-                                          utilizationPercentage > 80 ? 'bg-red-500' : 
-                                          utilizationPercentage > 50 ? 'bg-yellow-500' : 'bg-green-500'
-                                        }`}
-                                        style={{ width: `${Math.min(utilizationPercentage, 100)}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="pt-2 border-t border-border/40">
-                                  <div className="flex justify-between text-xs">
-                                    <span className="text-muted-foreground">Billing Cycle</span>
-                                    <span className="font-medium">
-                                      {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.billingCycle), timezone)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between text-xs mt-1">
-                                    <span className="text-muted-foreground">Due Date</span>
-                                    <span className="font-medium">
-                                      {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.dueDate), timezone)}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="flex gap-2 pt-2">
-                                  <Button variant="outline" size="sm" onClick={() => handleOpenCardDialog(card)} className="flex-1">
-                                    <Pencil className="h-3 w-3 mr-1" />
-                                    Edit
-                                  </Button>
-                                  <Button variant="outline" size="sm" onClick={() => handleDeleteCard(card.id)} className="text-destructive hover:text-destructive">
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
 
               {/* Profile Tab */}
               <TabsContent value="profile" className="space-y-4">
