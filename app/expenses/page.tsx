@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
-import { api, Expense } from "@/lib/api";
+import { api, Expense, CreditCard } from "@/lib/api";
 import { ProtectedRoute } from "@/contexts/AuthContext";
 import { useUser } from "@/contexts/UserContext";
 import { formatCurrency, formatDate } from "@/lib/timezone";
@@ -31,6 +31,7 @@ interface PaginationInfo {
 export default function ExpensesPage() {
   const { user, currency, timezone } = useUser();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 10,
@@ -55,8 +56,18 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     fetchExpenses();
+    fetchCreditCards();
   }, [pagination.page, pagination.limit, filterCategory, searchQuery]);
-
+  const fetchCreditCards = async () => {
+    try {
+      const response = await api.creditCards.getAll();
+      if (response.success && response.data) {
+        setCreditCards(response.data.cards || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch credit cards:', error);
+    }
+  };
   const fetchExpenses = async () => {
     setIsLoading(true);
     try {
@@ -458,26 +469,26 @@ export default function ExpensesPage() {
               </SelectContent>
             </Select>
           </div>
-          {formData.paymentMethod === "Credit Card" && creditCards.length > 0 && (
+          {formData.paymentMethod === "Credit Card" && creditCards?.length > 0 && (
             <div className="grid gap-2">
-              <Label htmlFor="creditCard">Credit Card {creditCards.length === 1 ? "" : "*"}</Label>
+              <Label htmlFor="creditCard">Credit Card {creditCards?.length === 1 ? "" : "*"}</Label>
               <Select 
                 value={formData.creditCardId} 
                 onValueChange={(value) => setFormData({ ...formData, creditCardId: value })}
-                disabled={creditCards.length === 1}
+                disabled={creditCards?.length === 1}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select credit card" />
                 </SelectTrigger>
                 <SelectContent>
-                  {creditCards.map(card => (
+                  {creditCards?.map(card => (
                     <SelectItem key={card.id} value={card.id}>
                       {card.name} (**** {card.lastFourDigits})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {creditCards.length === 1 && (
+              {creditCards?.length === 1 && (
                 <p className="text-xs text-muted-foreground">Only one card available - auto-selected</p>
               )}
             </div>

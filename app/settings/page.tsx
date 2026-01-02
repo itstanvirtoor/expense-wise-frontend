@@ -28,7 +28,6 @@ export default function SettingsPage() {
     email: "",
     location: "",
     currency: "",
-    monthlyBudget: "",
   });
 
   useEffect(() => {
@@ -45,7 +44,6 @@ export default function SettingsPage() {
         email: userData.email || "",
         location: userData.location || "United States",
         currency: userData.currency || "USD",
-        monthlyBudget: userData.monthlyBudget?.toString() || "3000",
       });
     } catch (error) {
       console.error("Failed to fetch user profile:", error);
@@ -71,7 +69,6 @@ export default function SettingsPage() {
       const response = await api.user.updateProfile({
         name: profileForm.name,
         currency: profileForm.currency,
-        monthlyBudget: parseFloat(profileForm.monthlyBudget),
         location: profileForm.location,
         timezone: config?.timezone || "America/New_York",
       });
@@ -232,18 +229,6 @@ export default function SettingsPage() {
                             Automatically set based on location. All dates and times will be displayed in this timezone.
                           </p>
                         </div>
-                      </div>
-                    </div>
-                    
-                    <div className="border-t border-border/40 pt-4 mt-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="monthlyBudget">Monthly Budget ({LOCATIONS.find(l => l.currency === profileForm.currency)?.currencySymbol})</Label>
-                        <Input 
-                          id="monthlyBudget" 
-                          type="number" 
-                          value={profileForm.monthlyBudget}
-                          onChange={(e) => setProfileForm({ ...profileForm, monthlyBudget: e.target.value })}
-                        />
                       </div>
                     </div>
                     

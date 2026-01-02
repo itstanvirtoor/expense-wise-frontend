@@ -8,14 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { 
   Calendar, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, 
-  BarChart3, CreditCard, Wallet, Filter, X, ShoppingBag, Home, Car,
-  Coffee, Heart, BookOpen, Plane, Smartphone
+  BarChart3, CreditCard, Wallet, Filter, X, LucideIcon
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
 import { useAuth, ProtectedRoute } from "@/contexts/AuthContext";
 import { useUser } from "@/contexts/UserContext";
 import { formatCurrency, formatDate } from "@/lib/timezone";
+import * as LucideIcons from "lucide-react";
 
 interface CategoryData {
   category: string;
@@ -24,6 +24,7 @@ interface CategoryData {
   trend: "up" | "down";
   trendValue: number;
   color: string;
+  icon: string;
 }
 
 interface TopExpense {
@@ -129,6 +130,11 @@ export default function AnalyticsPage() {
       colorMap.set(cat.category, cat.color);
     });
 
+    const iconMap = new Map<string, string>();
+    analyticsData.categoryBreakdown.forEach(cat => {
+      iconMap.set(cat.category, cat.icon);
+    });
+
     // Create new category breakdown with filtered data
     let recalculatedCategories: CategoryData[] = Array.from(categoryMap.entries()).map(([category, amount]) => ({
       category,
@@ -136,7 +142,8 @@ export default function AnalyticsPage() {
       percentage: filteredTotalAmount > 0 ? (amount / filteredTotalAmount) * 100 : 0,
       trend: "up" as const,
       trendValue: 0,
-      color: colorMap.get(category) || '#888888'
+      color: colorMap.get(category) || '#888888',
+      icon: iconMap.get(category) || 'Wallet',
     })).sort((a, b) => b.amount - a.amount);
 
     // If no filtered expenses, show empty state with original categories at 0
@@ -187,20 +194,10 @@ export default function AnalyticsPage() {
   // Get time period label
   const timePeriodLabel = timeRanges.find(range => range.value === timeRange)?.label || "Selected Period";
 
-  const getCategoryIcon = (category: string) => {
-    const icons: { [key: string]: any } = {
-      'Food & Dining': Coffee,
-      'Transportation': Car,
-      'Entertainment': Smartphone,
-      'Shopping': ShoppingBag,
-      'Utilities': Home,
-      'Healthcare': Heart,
-      'Education': BookOpen,
-      'Travel': Plane,
-      'Subscription': CreditCard,
-      'Others': Wallet,
-    };
-    return icons[category] || Wallet;
+  const getIconComponent = (iconName: string): LucideIcon => {
+    // @ts-ignore - dynamically accessing lucide icons
+    const IconComponent = LucideIcons[iconName];
+    return IconComponent || Wallet;
   };
 
   const activeFiltersCount = [selectedCategory !== "all", selectedPayment !== "all"].filter(Boolean).length;
@@ -381,7 +378,7 @@ export default function AnalyticsPage() {
                       <CardContent>
                         <div className="grid grid-cols-2 gap-4">
                           {filteredData.categoryBreakdown?.map((category, i) => {
-                            const Icon = getCategoryIcon(category.category);
+                            const Icon = getIconComponent(category.icon);
                             const isHovered = hoveredCategory === category.category;
                             
                             return (
@@ -398,10 +395,9 @@ export default function AnalyticsPage() {
                                 <div className="flex items-start justify-between mb-3">
                                   <div 
                                     className="p-2 rounded-lg"
-                                    style={{ backgroundColor: `${category.color}20` }}
                                   >
                                     <Icon 
-                                      className="h-5 w-5" 
+                                      className="h-6 w-6" 
                                       style={{ color: category.color }}
                                     />
                                   </div>

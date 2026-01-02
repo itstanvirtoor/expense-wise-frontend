@@ -12,6 +12,7 @@ import {
   TrendingUp,
   CreditCard,
   Landmark,
+  Wallet,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -24,6 +25,7 @@ export default function Sidebar({ userRole = "user" }: SidebarProps) {
   const userNavItems = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/expenses", label: "Expenses", icon: Receipt },
+    { href: "/budgets", label: "Monthly Budgets", icon: Wallet },
     { href: "/credit-cards", label: "Credit Cards", icon: CreditCard },
     { href: "/loans", label: "Loans & EMI", icon: Landmark },
     { href: "/sips", label: "SIPs & Mutual Funds", icon: TrendingUp },

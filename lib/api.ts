@@ -32,7 +32,6 @@ export interface User {
   role: 'USER' | 'ADMIN';
   profilePicture?: string;
   currency: string;
-  monthlyBudget: number;
   theme: string;
   location: string;
   timezone: string;
@@ -110,7 +109,14 @@ export interface SIP {
   createdAt: string;
   updatedAt: string;
 }
-
+export interface MonthlyBudget {
+  id: string;
+  userId: string;
+  month: string; // Format: YYYY-MM
+  budget: number;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface DashboardData {
   totalExpenses: number;
   monthlySpending: number;
@@ -535,6 +541,24 @@ export const api = {
     
     update: (settings: any) =>
       ApiClient.patch('/settings', settings),
+  },
+
+  // Budgets
+  budgets: {
+    getAll: () =>
+      ApiClient.get('/budgets'),
+    
+    getByMonth: (month: string) =>
+      ApiClient.get(`/budgets/${month}`),
+    
+    create: (data: { month: string; budget: number }) =>
+      ApiClient.post('/budgets', data),
+    
+    update: (month: string, data: { budget: number }) =>
+      ApiClient.patch(`/budgets/${month}`, data),
+    
+    delete: (month: string) =>
+      ApiClient.delete(`/budgets/${month}`),
   },
 
   // Categories

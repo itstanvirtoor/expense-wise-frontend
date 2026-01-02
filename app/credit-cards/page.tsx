@@ -62,7 +62,7 @@ export default function CreditCardsPage() {
         dueDate: card.dueDate.toString(),
         creditLimit: card.creditLimit.toString(),
         currentBalance: card.currentBalance.toString(),
-        previousOutstanding: card.previousOutstanding.toString(),
+        previousOutstanding: (card.previousOutstanding || 0).toString(),
       });
     } else {
       setEditingCard(null);
@@ -437,7 +437,7 @@ export default function CreditCardsPage() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="currentBalance">Current Balance</Label>
+                        <Label htmlFor="currentBalance">Current Outstanding</Label>
                         <Input
                           id="currentBalance"
                           type="number"
