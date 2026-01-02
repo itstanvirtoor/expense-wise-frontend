@@ -11,8 +11,12 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Plus, Pencil, Trash2, Bell, Lock, User, Palette, Calendar } from "lucide-react";
-import { useState } from "react";
+import { CreditCard, Plus, Pencil, Trash2, Bell, Lock, User, Palette, Calendar, Globe, CreditCard as CreditCardIcon } from "lucide-react";
+import { useState, useEffect } from "react";
+import { LOCATIONS, getLocationConfig, formatCurrency, formatDate } from "@/lib/timezone";
+import { api } from "@/lib/api";
+import type { User as UserType } from "@/lib/api";
+import { useUser } from "@/contexts/UserContext";
 
 interface CreditCardData {
   id: string;
@@ -26,28 +30,86 @@ interface CreditCardData {
 }
 
 export default function SettingsPage() {
-  const [cards, setCards] = useState<CreditCardData[]>([
-    {
-      id: "1",
-      name: "Chase Sapphire",
-      lastFourDigits: "4532",
-      billingCycle: 1,
-      dueDate: 25,
-      creditLimit: 10000,
-      currentBalance: 2350,
-      issuer: "Visa"
-    },
-    {
-      id: "2",
-      name: "Amex Gold",
-      lastFourDigits: "1008",
-      billingCycle: 15,
-      dueDate: 10,
-      creditLimit: 15000,
-      currentBalance: 4200,
-      issuer: "American Express"
+  const { refreshUser, currency, timezone } = useUser();
+  const [user, setUser] = useState<UserType | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  const [cards, setCards] = useState<CreditCardData[]>([]);
+
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    email: "",
+    location: "",
+    currency: "",
+    monthlyBudget: "",
+  });
+
+  useEffect(() => {
+    fetchUserProfile();
+    fetchCreditCards();
+  }, []);
+
+  const fetchCreditCards = async () => {
+    try {
+      const response = await api.creditCards.getAll();
+      const cardsData = response.data.cards || response.data;
+      setCards(Array.isArray(cardsData) ? cardsData : []);
+    } catch (error) {
+      console.error("Failed to fetch credit cards:", error);
     }
-  ]);
+  };
+
+  const fetchUserProfile = async () => {
+    try {
+      const response = await api.auth.getProfile();
+      const userData = response.data;
+      setUser(userData);
+      setProfileForm({
+        name: userData.name || "",
+        email: userData.email || "",
+        location: userData.location || "United States",
+        currency: userData.currency || "USD",
+        monthlyBudget: userData.monthlyBudget?.toString() || "3000",
+      });
+    } catch (error) {
+      console.error("Failed to fetch user profile:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLocationChange = (location: string) => {
+    const config = getLocationConfig(location);
+    if (config) {
+      setProfileForm({
+        ...profileForm,
+        location,
+        currency: config.currency,
+      });
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const config = getLocationConfig(profileForm.location);
+      const response = await api.user.updateProfile({
+        name: profileForm.name,
+        currency: profileForm.currency,
+        monthlyBudget: parseFloat(profileForm.monthlyBudget),
+        location: profileForm.location,
+        timezone: config?.timezone || "America/New_York",
+      });
+      
+      if (response.success) {
+        alert("Profile updated successfully!");
+        await fetchUserProfile();
+        await refreshUser(); // Refresh the global user context
+      }
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+      alert("Failed to update profile. Please try again.");
+    }
+  };
 
   const [isCardDialogOpen, setIsCardDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardData | null>(null);
@@ -96,35 +158,46 @@ export default function SettingsPage() {
     setIsCardDialogOpen(true);
   };
 
-  const handleSubmitCard = () => {
+  const handleSubmitCard = async () => {
     if (!cardForm.name || !cardForm.lastFourDigits || !cardForm.issuer) {
       alert("Please fill all required fields");
       return;
     }
 
-    const cardData: CreditCardData = {
-      id: editingCard?.id || Date.now().toString(),
-      name: cardForm.name,
-      lastFourDigits: cardForm.lastFourDigits,
-      billingCycle: parseInt(cardForm.billingCycle),
-      dueDate: parseInt(cardForm.dueDate),
-      creditLimit: parseFloat(cardForm.creditLimit) || 0,
-      currentBalance: parseFloat(cardForm.currentBalance) || 0,
-      issuer: cardForm.issuer,
-    };
+    try {
+      const cardPayload = {
+        name: cardForm.name,
+        lastFourDigits: cardForm.lastFourDigits,
+        billingCycle: parseInt(cardForm.billingCycle),
+        dueDate: parseInt(cardForm.dueDate),
+        creditLimit: parseFloat(cardForm.creditLimit) || 0,
+        currentBalance: parseFloat(cardForm.currentBalance) || 0,
+        issuer: cardForm.issuer,
+      };
 
-    if (editingCard) {
-      setCards(cards.map(c => c.id === editingCard.id ? cardData : c));
-    } else {
-      setCards([...cards, cardData]);
+      if (editingCard) {
+        await api.creditCards.update(editingCard.id, cardPayload);
+      } else {
+        await api.creditCards.create(cardPayload);
+      }
+
+      setIsCardDialogOpen(false);
+      fetchCreditCards(); // Refresh the list
+    } catch (error) {
+      console.error("Failed to save credit card:", error);
+      alert("Failed to save credit card. Please try again.");
     }
-
-    setIsCardDialogOpen(false);
   };
 
-  const handleDeleteCard = (id: string) => {
+  const handleDeleteCard = async (id: string) => {
     if (confirm("Are you sure you want to delete this credit card?")) {
-      setCards(cards.filter(c => c.id !== id));
+      try {
+        await api.creditCards.delete(id);
+        fetchCreditCards(); // Refresh the list
+      } catch (error) {
+        console.error("Failed to delete credit card:", error);
+        alert("Failed to delete credit card. Please try again.");
+      }
     }
   };
 
@@ -317,66 +390,77 @@ export default function SettingsPage() {
                         <p className="text-sm text-muted-foreground mt-2">Add your first card to track billing cycles</p>
                       </div>
                     ) : (
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {cards.map((card) => {
-                          const daysUntilDue = getDaysUntilDue(card.dueDate);
-                          const utilization = (card.currentBalance / card.creditLimit) * 100;
+                          const utilizationPercentage = card.creditLimit > 0 ? (card.currentBalance / card.creditLimit) * 100 : 0;
                           
                           return (
-                            <Card key={card.id} className="border-border/40 bg-background/50">
-                              <CardHeader>
-                                <div className="flex justify-between items-start">
-                                  <div className="flex items-center gap-3">
-                                    <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                                      <CreditCard className="h-6 w-6 text-white" />
-                                    </div>
-                                    <div>
-                                      <CardTitle className="text-lg">{card.name}</CardTitle>
-                                      <p className="text-sm text-muted-foreground">•••• {card.lastFourDigits}</p>
-                                    </div>
+                            <Card key={card.id} className="border-border/40 bg-gradient-to-br from-card/50 to-card/30 backdrop-blur">
+                              <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <CreditCardIcon className="h-5 w-5 text-primary" />
+                                    <CardTitle className="text-lg">{card.name}</CardTitle>
                                   </div>
-                                  <Badge variant="outline">{card.issuer}</Badge>
+                                  <Badge variant="outline" className="text-xs">
+                                    {card.issuer}
+                                  </Badge>
                                 </div>
+                                <CardDescription>**** **** **** {card.lastFourDigits}</CardDescription>
                               </CardHeader>
-                              <CardContent className="space-y-4">
+                              <CardContent className="space-y-3">
                                 <div className="space-y-2">
                                   <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Current Balance</span>
-                                    <span className="font-semibold">${card.currentBalance.toLocaleString()}</span>
+                                    <span className="text-muted-foreground">Previous Outstanding</span>
+                                    <span className="font-semibold text-red-500">
+                                      {formatCurrency(card.currentBalance * 0.75, currency)}
+                                    </span>
                                   </div>
                                   <div className="flex justify-between text-sm">
-                                    <span className="text-muted-foreground">Credit Limit</span>
-                                    <span className="font-semibold">${card.creditLimit.toLocaleString()}</span>
+                                    <span className="text-muted-foreground">Current Outstanding</span>
+                                    <span className="font-semibold text-orange-500">
+                                      {formatCurrency(card.currentBalance, currency)}
+                                    </span>
                                   </div>
-                                  <div className="space-y-1">
-                                    <div className="flex justify-between text-xs">
-                                      <span className="text-muted-foreground">Utilization</span>
-                                      <span className={`font-medium ${utilization > 70 ? 'text-red-500' : utilization > 50 ? 'text-yellow-500' : 'text-green-500'}`}>
-                                        {utilization.toFixed(1)}%
+                                  <div className="flex justify-between text-sm border-t border-border/40 pt-2 mt-2">
+                                    <span className="text-muted-foreground">Credit Limit</span>
+                                    <span className="font-semibold">
+                                      {formatCurrency(card.creditLimit, currency)}
+                                    </span>
+                                  </div>
+                                  <div className="pt-2">
+                                    <div className="flex justify-between text-xs mb-1">
+                                      <span className="text-muted-foreground">Current Utilization</span>
+                                      <span className={`font-medium ${
+                                        utilizationPercentage > 80 ? 'text-red-500' : 
+                                        utilizationPercentage > 50 ? 'text-yellow-500' : 'text-green-500'
+                                      }`}>
+                                        {utilizationPercentage.toFixed(1)}%
                                       </span>
                                     </div>
                                     <div className="h-2 bg-muted rounded-full overflow-hidden">
                                       <div
-                                        className={`h-full transition-all duration-500 ${utilization > 70 ? 'bg-red-500' : utilization > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                                        style={{ width: `${Math.min(utilization, 100)}%` }}
+                                        className={`h-full transition-all ${
+                                          utilizationPercentage > 80 ? 'bg-red-500' : 
+                                          utilizationPercentage > 50 ? 'bg-yellow-500' : 'bg-green-500'
+                                        }`}
+                                        style={{ width: `${Math.min(utilizationPercentage, 100)}%` }}
                                       />
                                     </div>
                                   </div>
                                 </div>
-
-                                <div className="pt-3 border-t border-border/40 space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                                    <span className="text-sm text-muted-foreground">Billing Cycle: Day {card.billingCycle}</span>
+                                <div className="pt-2 border-t border-border/40">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-muted-foreground">Billing Cycle</span>
+                                    <span className="font-medium">
+                                      {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.billingCycle), timezone)}
+                                    </span>
                                   </div>
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <Bell className="h-4 w-4 text-muted-foreground" />
-                                      <span className="text-sm text-muted-foreground">Due Date: {calculateNextDueDate(card.billingCycle, card.dueDate)}</span>
-                                    </div>
-                                    <Badge variant={daysUntilDue <= 7 ? "destructive" : "secondary"} className="text-xs">
-                                      {daysUntilDue} days
-                                    </Badge>
+                                  <div className="flex justify-between text-xs mt-1">
+                                    <span className="text-muted-foreground">Due Date</span>
+                                    <span className="font-medium">
+                                      {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.dueDate), timezone)}
+                                    </span>
                                   </div>
                                 </div>
 
@@ -404,38 +488,125 @@ export default function SettingsPage() {
                 <Card className="border-border/40 bg-card/50 backdrop-blur">
                   <CardHeader>
                     <CardTitle>Profile Settings</CardTitle>
-                    <CardDescription>Manage your personal information</CardDescription>
+                    <CardDescription>Manage your personal information and preferences</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {loading ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                        <p className="mt-4 text-sm text-muted-foreground">Loading profile...</p>
+                      </div>
+                    ) : (
+                      <>
                     <div className="grid gap-2">
                       <Label htmlFor="fullName">Full Name</Label>
-                      <Input id="fullName" defaultValue="John Doe" />
+                      <Input 
+                        id="fullName" 
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                      />
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" defaultValue="john.doe@example.com" />
+                      <Input 
+                        id="email" 
+                        type="email" 
+                        value={profileForm.email}
+                        disabled
+                        className="opacity-60 cursor-not-allowed"
+                      />
+                      <p className="text-xs text-muted-foreground">Email cannot be changed</p>
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="currency">Default Currency</Label>
-                      <Select defaultValue="usd">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="usd">USD ($)</SelectItem>
-                          <SelectItem value="eur">EUR (€)</SelectItem>
-                          <SelectItem value="gbp">GBP (£)</SelectItem>
-                          <SelectItem value="inr">INR (₹)</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    
+                    <div className="border-t border-border/40 pt-4 mt-4">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Globe className="h-5 w-5 text-primary" />
+                        <h3 className="text-sm font-semibold">Location & Currency Settings</h3>
+                      </div>
+                      
+                      <div className="grid gap-4">
+                        <div className="grid gap-2">
+                          <Label htmlFor="location">Location</Label>
+                          <Select 
+                            value={profileForm.location} 
+                            onValueChange={handleLocationChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {LOCATIONS.map((loc) => (
+                                <SelectItem key={loc.country} value={loc.country}>
+                                  {loc.country}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Timezone and currency will be set based on your location
+                          </p>
+                        </div>
+                        
+                        <div className="grid gap-2">
+                          <Label htmlFor="currency">Currency</Label>
+                          <Select 
+                            value={profileForm.currency} 
+                            onValueChange={(value) => setProfileForm({ ...profileForm, currency: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from(new Set(LOCATIONS.map(loc => loc.currency))).map((currency) => {
+                                const loc = LOCATIONS.find(l => l.currency === currency);
+                                return (
+                                  <SelectItem key={currency} value={currency}>
+                                    {currency} ({loc?.currencySymbol})
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Selected: {LOCATIONS.find(l => l.currency === profileForm.currency)?.currencySymbol} {profileForm.currency}
+                          </p>
+                        </div>
+                        
+                        <div className="grid gap-2">
+                          <Label htmlFor="timezone">Timezone</Label>
+                          <Input 
+                            id="timezone" 
+                            value={getLocationConfig(profileForm.location)?.timezone || "America/New_York"}
+                            disabled
+                            className="opacity-60 cursor-not-allowed"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Automatically set based on location. All dates and times will be displayed in this timezone.
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="monthlyBudget">Monthly Budget</Label>
-                      <Input id="monthlyBudget" type="number" defaultValue="3000" />
+                    
+                    <div className="border-t border-border/40 pt-4 mt-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="monthlyBudget">Monthly Budget ({LOCATIONS.find(l => l.currency === profileForm.currency)?.currencySymbol})</Label>
+                        <Input 
+                          id="monthlyBudget" 
+                          type="number" 
+                          value={profileForm.monthlyBudget}
+                          onChange={(e) => setProfileForm({ ...profileForm, monthlyBudget: e.target.value })}
+                        />
+                      </div>
                     </div>
-                    <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+                    
+                    <Button 
+                      onClick={handleSaveProfile}
+                      className="bg-gradient-to-r from-primary to-accent hover:opacity-90 w-full"
+                    >
                       Save Changes
                     </Button>
+                    </>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>

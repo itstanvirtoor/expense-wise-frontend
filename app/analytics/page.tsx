@@ -12,6 +12,8 @@ import { Calendar, TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIco
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth, ProtectedRoute } from "@/contexts/AuthContext";
+import { useUser } from "@/contexts/UserContext";
+import { formatCurrency, formatDate } from "@/lib/timezone";
 
 interface CategoryData {
   category: string;
@@ -53,7 +55,8 @@ interface AnalyticsData {
 }
 
 export default function AnalyticsPage() {
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
+  const { user, currency, timezone } = useUser();
   const [timeRange, setTimeRange] = useState("30days");
   const [viewType, setViewType] = useState("category");
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
@@ -105,11 +108,8 @@ export default function AnalyticsPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: user?.currency || 'USD',
-    }).format(amount || 0);
+  const formatAmount = (amount: number) => {
+    return formatCurrency(amount || 0, currency);
   };
 
   const timeRanges = [
@@ -184,7 +184,7 @@ export default function AnalyticsPage() {
                       <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{formatCurrency(analyticsData.insights.averageTransaction)}</div>
+                      <div className="text-2xl font-bold">{formatAmount(analyticsData.insights.averageTransaction)}</div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {analyticsData.insights.averageTransactionChange >= 0 ? '+' : ''}{analyticsData.insights.averageTransactionChange}% from last period
                       </p>
@@ -246,7 +246,7 @@ export default function AnalyticsPage() {
                                 />
                                 <span className="font-medium">{category.category}</span>
                               </div>
-                              <span className="text-muted-foreground">{formatCurrency(category.amount)}</span>
+                              <span className="text-muted-foreground">{formatAmount(category.amount)}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="h-2 bg-muted rounded-full overflow-hidden flex-1">
@@ -288,7 +288,7 @@ export default function AnalyticsPage() {
                                 </Badge>
                               </div>
                             </div>
-                            <p className="font-semibold text-red-500">{formatCurrency(expense.amount)}</p>
+                            <p className="font-semibold text-red-500">{formatAmount(expense.amount)}</p>
                           </div>
                         ))}
                       </div>
@@ -368,13 +368,13 @@ export default function AnalyticsPage() {
                                   {showExpenses && (
                                     <div className="flex items-center gap-2 mb-1">
                                       <div className="h-2 w-2 rounded bg-primary" />
-                                      <span className="text-xs">Expenses: {formatCurrency(data.expenses)}</span>
+                                      <span className="text-xs">Expenses: {formatAmount(data.expenses)}</span>
                                     </div>
                                   )}
                                   {showIncome && (
                                     <div className="flex items-center gap-2">
                                       <div className="h-2 w-2 rounded bg-accent" />
-                                      <span className="text-xs">Income: {formatCurrency(data.income)}</span>
+                                      <span className="text-xs">Income: {formatAmount(data.income)}</span>
                                     </div>
                                   )}
                                 </div>
@@ -420,7 +420,7 @@ export default function AnalyticsPage() {
                               </div>
                               <div>
                                 <p className="font-semibold">{category.category}</p>
-                                <p className="text-sm text-muted-foreground">{formatCurrency(category.amount)} spent</p>
+                                <p className="text-sm text-muted-foreground">{formatAmount(category.amount)} spent</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -477,7 +477,7 @@ export default function AnalyticsPage() {
                               </div>
                               <div>
                                 <p className="font-semibold">{category.category}</p>
-                                <p className="text-sm text-muted-foreground">{formatCurrency(category.amount)} spent</p>
+                                <p className="text-sm text-muted-foreground">{formatAmount(category.amount)} spent</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -559,14 +559,14 @@ export default function AnalyticsPage() {
                               {period1 === "7days" ? "Last 7 Days" : period1 === "30days" ? "Last 30 Days" : period1 === "90days" ? "Last 3 Months" : "Last 6 Months"}
                             </p>
                             <p className="text-2xl font-bold mt-1">
-                              {formatCurrency(period1Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
+                              {formatAmount(period1Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
                             </p>
                           </div>
                           {period1Data?.categoryBreakdown?.slice(0, 5).map((category, i) => (
                             <div key={i} className="space-y-2">
                               <div className="flex items-center justify-between text-sm">
                                 <span className="font-medium">{category.category}</span>
-                                <span className="text-muted-foreground">{formatCurrency(category.amount)}</span>
+                                <span className="text-muted-foreground">{formatAmount(category.amount)}</span>
                               </div>
                               <div className="h-2 bg-muted rounded-full overflow-hidden">
                                 <div
@@ -593,14 +593,14 @@ export default function AnalyticsPage() {
                               {period2 === "7days" ? "Last 7 Days" : period2 === "30days" ? "Last 30 Days" : period2 === "90days" ? "Last 3 Months" : "Last 6 Months"}
                             </p>
                             <p className="text-2xl font-bold mt-1">
-                              {formatCurrency(period2Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
+                              {formatAmount(period2Data?.categoryBreakdown?.reduce((sum, cat) => sum + cat.amount, 0) || 0)}
                             </p>
                           </div>
                           {period2Data?.categoryBreakdown?.slice(0, 5).map((category, i) => (
                             <div key={i} className="space-y-2">
                               <div className="flex items-center justify-between text-sm">
                                 <span className="font-medium">{category.category}</span>
-                                <span className="text-muted-foreground">{formatCurrency(category.amount)}</span>
+                                <span className="text-muted-foreground">{formatAmount(category.amount)}</span>
                               </div>
                               <div className="h-2 bg-muted rounded-full overflow-hidden">
                                 <div
@@ -638,3 +638,4 @@ export default function AnalyticsPage() {
     </ProtectedRoute>
   );
 }
+

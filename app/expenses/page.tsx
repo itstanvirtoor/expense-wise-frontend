@@ -11,10 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight, CreditCard as CreditCardIcon } from "lucide-react";
 import { useState, useEffect } from "react";
-import { api, Expense } from "@/lib/api";
-import { useAuth, ProtectedRoute } from "@/contexts/AuthContext";
+import { api, Expense, CreditCard } from "@/lib/api";
+import { ProtectedRoute } from "@/contexts/AuthContext";
+import { useUser } from "@/contexts/UserContext";
+import { formatCurrency, formatDate } from "@/lib/timezone";
 
 const categories = ["Food & Dining", "Transportation", "Entertainment", "Utilities", "Shopping", "Healthcare", "Education", "Others"];
 const paymentMethods = ["Cash", "Credit Card", "Debit Card", "UPI", "Net Banking"];
@@ -27,8 +29,9 @@ interface PaginationInfo {
 }
 
 export default function ExpensesPage() {
-  const { user } = useAuth();
+  const { user, currency, timezone } = useUser();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 10,
@@ -47,12 +50,26 @@ export default function ExpensesPage() {
     category: "",
     amount: "",
     paymentMethod: "",
+    creditCardId: "",
     notes: "",
   });
 
   useEffect(() => {
     fetchExpenses();
+    fetchCreditCards();
   }, [pagination.page, pagination.limit, filterCategory, searchQuery]);
+
+  const fetchCreditCards = async () => {
+    try {
+      const response = await api.creditCards.getAll();
+      if (response.success && response.data) {
+        const cards = response.data.cards || response.data;
+        setCreditCards(Array.isArray(cards) ? cards : []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch credit cards:', error);
+    }
+  };
 
   const fetchExpenses = async () => {
     setIsLoading(true);
@@ -86,6 +103,7 @@ export default function ExpensesPage() {
         category: expense.category,
         amount: expense.amount.toString(),
         paymentMethod: expense.paymentMethod,
+        creditCardId: expense.creditCardId || "",
         notes: expense.notes || "",
       });
     } else {
@@ -96,6 +114,7 @@ export default function ExpensesPage() {
         category: "",
         amount: "",
         paymentMethod: "",
+        creditCardId: creditCards.length === 1 ? creditCards[0].id : "",
         notes: "",
       });
     }
@@ -108,8 +127,14 @@ export default function ExpensesPage() {
       return;
     }
 
+    // Validate credit card selection if payment method is Credit Card
+    if (formData.paymentMethod === "Credit Card" && !formData.creditCardId && creditCards.length > 0) {
+      alert("Please select a credit card");
+      return;
+    }
+
     try {
-      const expensePayload = {
+      const expensePayload: any = {
         date: formData.date,
         description: formData.description,
         category: formData.category,
@@ -117,6 +142,11 @@ export default function ExpensesPage() {
         paymentMethod: formData.paymentMethod,
         notes: formData.notes || undefined,
       };
+
+      // Add creditCardId if payment method is Credit Card
+      if (formData.paymentMethod === "Credit Card" && formData.creditCardId) {
+        expensePayload.creditCardId = formData.creditCardId;
+      }
 
       if (editingExpense) {
         await api.expenses.update(editingExpense.id, expensePayload);
@@ -126,6 +156,7 @@ export default function ExpensesPage() {
 
       setIsDialogOpen(false);
       fetchExpenses(); // Reload expenses
+      fetchCreditCards(); // Reload credit cards to update balances
     } catch (error) {
       console.error('Failed to save expense:', error);
       alert('Failed to save expense. Please try again.');
@@ -144,11 +175,8 @@ export default function ExpensesPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: user?.currency || 'USD',
-    }).format(amount);
+  const formatAmount = (amount: number) => {
+    return formatCurrency(amount, currency);
   };
 
   const handlePageChange = (newPage: number) => {
@@ -195,96 +223,95 @@ export default function ExpensesPage() {
                   Track and manage all your expenses
                 </p>
               </div>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => handleOpenDialog()} className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Expense
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
-                  <DialogHeader>
-                    <DialogTitle>{editingExpense ? "Edit Expense" : "Add New Expense"}</DialogTitle>
-                    <DialogDescription>
-                      {editingExpense ? "Update the expense details below." : "Fill in the details to add a new expense."}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="date">Date *</Label>
-                      <Input
-                        id="date"
-                        type="date"
-                        value={formData.date}
-                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="description">Description *</Label>
-                      <Input
-                        id="description"
-                        placeholder="e.g., Grocery shopping"
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="category">Category *</Label>
-                      <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories.map(cat => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="amount">Amount *</Label>
-                      <Input
-                        id="amount"
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={formData.amount}
-                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="paymentMethod">Payment Method *</Label>
-                      <Select value={formData.paymentMethod} onValueChange={(value) => setFormData({ ...formData, paymentMethod: value })}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select payment method" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {paymentMethods.map(method => (
-                            <SelectItem key={method} value={method}>{method}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="notes">Notes (Optional)</Label>
-                      <Textarea
-                        id="notes"
-                        placeholder="Add any additional notes..."
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSubmit} className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
-                      {editingExpense ? "Update" : "Add"} Expense
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <Button onClick={() => handleOpenDialog()} className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Expense
+              </Button>
             </div>
+
+            {/* Credit Cards Section */}
+            {creditCards && creditCards.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-lg font-semibold">Your Credit Cards</h2>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {creditCards.map((card) => {
+                  const utilizationPercentage = card.creditLimit > 0 ? (card.currentBalance / card.creditLimit) * 100 : 0;
+                  return (
+                    <Card key={card.id} className="border-border/40 bg-gradient-to-br from-card/50 to-card/30 backdrop-blur">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CreditCardIcon className="h-5 w-5 text-primary" />
+                            <CardTitle className="text-lg">{card.name}</CardTitle>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {card.issuer}
+                          </Badge>
+                        </div>
+                        <CardDescription>**** **** **** {card.lastFourDigits}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Previous Outstanding</span>
+                            <span className="font-semibold text-red-500">
+                              {formatAmount(card.currentBalance * 0.75, currency)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Current Outstanding</span>
+                            <span className="font-semibold text-orange-500">
+                              {formatAmount(card.currentBalance, currency)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-sm border-t border-border/40 pt-2 mt-2">
+                            <span className="text-muted-foreground">Credit Limit</span>
+                            <span className="font-semibold">
+                              {formatAmount(card.creditLimit, currency)}
+                            </span>
+                          </div>
+                          <div className="pt-2">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-muted-foreground">Current Utilization</span>
+                              <span className={`font-medium ${
+                                utilizationPercentage > 80 ? 'text-red-500' : 
+                                utilizationPercentage > 50 ? 'text-yellow-500' : 'text-green-500'
+                              }`}>
+                                {utilizationPercentage.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-full transition-all ${
+                                  utilizationPercentage > 80 ? 'bg-red-500' : 
+                                  utilizationPercentage > 50 ? 'bg-yellow-500' : 'bg-green-500'
+                                }`}
+                                style={{ width: `${Math.min(utilizationPercentage, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pt-2 border-t border-border/40">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Billing Cycle</span>
+                            <span className="font-medium">
+                              {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.billingCycle), timezone)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs mt-1">
+                            <span className="text-muted-foreground">Due Date</span>
+                            <span className="font-medium">
+                              {formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), card.dueDate), timezone)}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+                </div>
+              </div>
+            )}
 
             {/* Filters and Search */}
             <Card className="border-border/40 bg-card/50 backdrop-blur">
@@ -380,7 +407,7 @@ export default function ExpensesPage() {
                             expenses.map((expense) => (
                               <TableRow key={expense.id}>
                                 <TableCell className="font-medium">
-                                  {new Date(expense.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {formatDate(expense.date, timezone)}
                                 </TableCell>
                                 <TableCell>
                                   <div>
@@ -399,7 +426,7 @@ export default function ExpensesPage() {
                                   {expense.paymentMethod}
                                 </TableCell>
                                 <TableCell className="text-right font-semibold">
-                                  {formatCurrency(expense.amount)}
+                                  {formatAmount(expense.amount, currency)}
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex justify-end gap-2">
@@ -463,6 +490,117 @@ export default function ExpensesPage() {
         </main>
       </div>
     </div>
+
+    {/* Add/Edit Expense Dialog */}
+    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>{editingExpense ? "Edit Expense" : "Add New Expense"}</DialogTitle>
+          <DialogDescription>
+            {editingExpense ? "Update the expense details below." : "Fill in the details to add a new expense."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="date">Date *</Label>
+            <Input
+              id="date"
+              type="date"
+              value={formData.date}
+              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="description">Description *</Label>
+            <Input
+              id="description"
+              placeholder="e.g., Grocery shopping"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="category">Category *</Label>
+            <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(cat => (
+                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="amount">Amount *</Label>
+            <Input
+              id="amount"
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={formData.amount}
+              onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="paymentMethod">Payment Method *</Label>
+            <Select value={formData.paymentMethod} onValueChange={(value) => setFormData({ ...formData, paymentMethod: value })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select payment method" />
+              </SelectTrigger>
+              <SelectContent>
+                {paymentMethods.map(method => (
+                  <SelectItem key={method} value={method}>{method}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {formData.paymentMethod === "Credit Card" && creditCards.length > 0 && (
+            <div className="grid gap-2">
+              <Label htmlFor="creditCard">Credit Card {creditCards.length === 1 ? "" : "*"}</Label>
+              <Select 
+                value={formData.creditCardId} 
+                onValueChange={(value) => setFormData({ ...formData, creditCardId: value })}
+                disabled={creditCards.length === 1}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select credit card" />
+                </SelectTrigger>
+                <SelectContent>
+                  {creditCards.map(card => (
+                    <SelectItem key={card.id} value={card.id}>
+                      {card.name} (**** {card.lastFourDigits})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {creditCards.length === 1 && (
+                <p className="text-xs text-muted-foreground">Only one card available - auto-selected</p>
+              )}
+            </div>
+          )}
+          <div className="grid gap-2">
+            <Label htmlFor="notes">Notes (Optional)</Label>
+            <Textarea
+              id="notes"
+              placeholder="Add any additional notes..."
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+            {editingExpense ? "Update" : "Add"} Expense
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     </ProtectedRoute>
   );
 }
+

@@ -34,6 +34,8 @@ export interface User {
   currency: string;
   monthlyBudget: number;
   theme: string;
+  location: string;
+  timezone: string;
   emailNotifications: boolean;
   budgetAlerts: boolean;
   billReminders: boolean;
@@ -394,19 +396,19 @@ export const api = {
   // Credit Cards
   creditCards: {
     getAll: () =>
-      ApiClient.get<CreditCard[]>('/credit-card'),
+      ApiClient.get<CreditCard[]>('/credit-cards'),
     
     getById: (id: string) =>
-      ApiClient.get<CreditCard>(`/credit-card/${id}`),
+      ApiClient.get<CreditCard>(`/credit-cards/${id}`),
     
     create: (card: Partial<CreditCard>) =>
-      ApiClient.post<CreditCard>('/credit-card', card),
+      ApiClient.post<CreditCard>('/credit-cards', card),
     
     update: (id: string, card: Partial<CreditCard>) =>
-      ApiClient.patch<CreditCard>(`/credit-card/${id}`, card),
+      ApiClient.patch<CreditCard>(`/credit-cards/${id}`, card),
     
     delete: (id: string) =>
-      ApiClient.delete(`/credit-card/${id}`),
+      ApiClient.delete(`/credit-cards/${id}`),
     
     getPayments: (id: string) =>
       ApiClient.get(`/credit-card/${id}/payments`),

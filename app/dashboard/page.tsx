@@ -5,11 +5,14 @@ import Sidebar from "@/components/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, DollarSign, Calendar } from "lucide-react";
 import { useAuth, ProtectedRoute } from "@/contexts/AuthContext";
+import { useUser } from "@/contexts/UserContext";
 import { useEffect, useState } from "react";
 import { api, DashboardData } from "@/lib/api";
+import { formatCurrency, formatMonthYear } from "@/lib/timezone";
 
 export default function UserDashboard() {
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
+  const { user, currency, timezone } = useUser();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -20,8 +23,6 @@ export default function UserDashboard() {
   const fetchDashboardData = async () => {
     try {
       const response = await api.dashboard.getData();
-      console.log('Dashboard API Response:', response);
-      console.log('Dashboard Data:', response.data);
       
       if (response.success && response.data) {
         setDashboardData(response.data);
@@ -33,17 +34,13 @@ export default function UserDashboard() {
     }
   };
 
-  const formatCurrency = (amount: number | undefined | null) => {
+  const formatAmount = (amount: number | undefined | null) => {
     const value = amount ?? 0;
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: user?.currency || 'USD',
-    }).format(isNaN(value) ? 0 : value);
+    return formatCurrency(isNaN(value) ? 0 : value, currency);
   };
 
   const getCurrentMonthYear = () => {
-    const now = new Date();
-    return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return formatMonthYear(new Date(), timezone);
   };
 
   return (
@@ -78,7 +75,7 @@ export default function UserDashboard() {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(dashboardData?.totalExpenses ?? 0)}</div>
+                  <div className="text-2xl font-bold">{formatAmount(dashboardData?.totalExpenses ?? 0)}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     All time expenses
                   </p>
@@ -91,7 +88,7 @@ export default function UserDashboard() {
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(dashboardData?.monthlySpending ?? 0)}</div>
+                  <div className="text-2xl font-bold">{formatAmount(dashboardData?.monthlySpending ?? 0)}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {getCurrentMonthYear()}
                   </p>
@@ -104,7 +101,7 @@ export default function UserDashboard() {
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(dashboardData?.monthlyBudget ?? 0)}</div>
+                  <div className="text-2xl font-bold">{formatAmount(dashboardData?.monthlyBudget ?? 0)}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     Your monthly limit
                   </p>
@@ -117,7 +114,7 @@ export default function UserDashboard() {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(dashboardData?.budgetRemaining ?? 0)}</div>
+                  <div className="text-2xl font-bold">{formatAmount(dashboardData?.budgetRemaining ?? 0)}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {dashboardData?.monthlyBudget && dashboardData.monthlyBudget > 0 && dashboardData?.budgetRemaining !== undefined
                       ? ((dashboardData.budgetRemaining / dashboardData.monthlyBudget) * 100).toFixed(0)
@@ -147,7 +144,7 @@ export default function UserDashboard() {
                             </p>
                           </div>
                           <span className="font-semibold text-red-500">
-                            -{formatCurrency(expense.amount)}
+                            -{formatAmount(expense.amount)}
                           </span>
                         </div>
                       ))
@@ -173,7 +170,7 @@ export default function UserDashboard() {
                         <div key={cat.category} className="space-y-2">
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">{cat.category}</span>
-                            <span className="text-muted-foreground">{formatCurrency(cat.total)}</span>
+                            <span className="text-muted-foreground">{formatAmount(cat.total)}</span>
                           </div>
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div
@@ -210,7 +207,7 @@ export default function UserDashboard() {
                       {dashboardData.monthlyTrends.map((trend) => (
                         <div key={trend.month} className="flex items-center justify-between">
                           <span className="text-sm font-medium">{trend.month}</span>
-                          <span className="text-sm font-semibold">{formatCurrency(trend.total ?? 0)}</span>
+                          <span className="text-sm font-semibold">{formatAmount(trend.total ?? 0)}</span>
                         </div>
                       ))}
                     </div>
@@ -231,7 +228,7 @@ export default function UserDashboard() {
                         <div key={payment.method} className="space-y-2">
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">{payment.method}</span>
-                            <span className="text-muted-foreground">{formatCurrency(payment.total)}</span>
+                            <span className="text-muted-foreground">{formatAmount(payment.total)}</span>
                           </div>
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div

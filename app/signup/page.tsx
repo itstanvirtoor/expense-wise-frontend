@@ -10,6 +10,7 @@ import { Sparkles, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@/contexts/UserContext";
 
 export default function SignUpPage() {
   const [name, setName] = useState("");
@@ -22,6 +23,7 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { signup } = useAuth();
+  const { refreshUser } = useUser();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,9 +42,15 @@ export default function SignUpPage() {
     setIsLoading(true);
 
     try {
-      const result = await signup({ name, email, password });
+      const result = await signup({ 
+        name, 
+        email, 
+        password,
+        confirmPassword
+      });
       
       if (result.success) {
+        await refreshUser(); // Refresh UserContext after signup
         router.push("/dashboard");
       } else {
         setError(result.message || "Signup failed. Please try again.");
@@ -110,6 +118,7 @@ export default function SignUpPage() {
                   className="bg-background/50"
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">

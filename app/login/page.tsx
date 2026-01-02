@@ -10,6 +10,7 @@ import { Shield, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@/contexts/UserContext";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,6 +20,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
+  const { refreshUser } = useUser();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +31,7 @@ export default function LoginPage() {
       const result = await login({ email, password });
       
       if (result.success) {
+        await refreshUser(); // Refresh UserContext after login
         router.push("/dashboard");
       } else {
         setError(result.message || "Login failed. Please check your credentials.");
