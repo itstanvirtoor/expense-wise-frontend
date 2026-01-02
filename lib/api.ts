@@ -500,7 +500,7 @@ export const api = {
 
   // Analytics
   analytics: {
-    getOverview: (params?: { timeRange?: string; startDate?: string; endDate?: string }) => {
+    getOverview: (params?: { timeRange?: string; startDate?: string; endDate?: string; category?: string; paymentMethod?: string }) => {
       const queryParams = new URLSearchParams();
       if (params) {
         Object.entries(params).forEach(([key, value]) => {

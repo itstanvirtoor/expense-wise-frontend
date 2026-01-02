@@ -68,15 +68,48 @@ export default function AnalyticsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
 
   useEffect(() => {
     fetchAnalytics();
-  }, [timeRange]);
+  }, [timeRange, selectedCategory, selectedPayment]);
+
+  useEffect(() => {
+    fetchCategories();
+    fetchPaymentMethods();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await api.categories.getAll();
+      if (response.success && response.data) {
+        setCategories(response.data.categories.map((cat: any) => cat.name));
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
+  };
+
+  const fetchPaymentMethods = async () => {
+    try {
+      const response = await api.paymentMethods.getAll();
+      if (response.success && response.data) {
+        setPaymentMethods(response.data.paymentMethods);
+      }
+    } catch (error) {
+      console.error('Failed to fetch payment methods:', error);
+    }
+  };
 
   const fetchAnalytics = async () => {
     setIsLoading(true);
     try {
-      const response = await api.analytics.getOverview({ timeRange });
+      const response = await api.analytics.getOverview({
+        timeRange,
+        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        paymentMethod: selectedPayment !== 'all' ? selectedPayment : undefined,
+      });
       if (response.success && response.data) {
         setAnalyticsData(response.data);
       }
@@ -98,98 +131,6 @@ export default function AnalyticsPage() {
     { value: "6months", label: "Last 6 Months" },
     { value: "1year", label: "Last Year" },
   ];
-
-  // Filter data based on selections
-  const filteredData = useMemo(() => {
-    if (!analyticsData) return null;
-    
-    let filteredExpenses = analyticsData.topExpenses;
-
-    // Apply category filter
-    if (selectedCategory !== "all") {
-      filteredExpenses = filteredExpenses.filter(exp => exp.category === selectedCategory);
-    }
-
-    // Apply payment method filter
-    if (selectedPayment !== "all") {
-      filteredExpenses = filteredExpenses.filter(exp => exp.paymentMethod === selectedPayment);
-    }
-
-    // Calculate totals from filtered expenses for category/trends only
-    const filteredTotalAmount = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-    
-    // Regenerate category breakdown from filtered expenses
-    const categoryMap = new Map<string, number>();
-    filteredExpenses.forEach((exp) => {
-      categoryMap.set(exp.category, (categoryMap.get(exp.category) || 0) + exp.amount);
-    });
-
-    // Get color mapping from original categories
-    const colorMap = new Map<string, string>();
-    analyticsData.categoryBreakdown.forEach(cat => {
-      colorMap.set(cat.category, cat.color);
-    });
-
-    const iconMap = new Map<string, string>();
-    analyticsData.categoryBreakdown.forEach(cat => {
-      iconMap.set(cat.category, cat.icon);
-    });
-
-    // Create new category breakdown with filtered data
-    let recalculatedCategories: CategoryData[] = Array.from(categoryMap.entries()).map(([category, amount]) => ({
-      category,
-      amount,
-      percentage: filteredTotalAmount > 0 ? (amount / filteredTotalAmount) * 100 : 0,
-      trend: "up" as const,
-      trendValue: 0,
-      color: colorMap.get(category) || '#888888',
-      icon: iconMap.get(category) || 'Wallet',
-    })).sort((a, b) => b.amount - a.amount);
-
-    // If no filtered expenses, show empty state with original categories at 0
-    if (filteredExpenses.length === 0 && (selectedCategory !== "all" || selectedPayment !== "all")) {
-      recalculatedCategories = analyticsData.categoryBreakdown.map(cat => ({
-        ...cat,
-        amount: 0,
-        percentage: 0
-      }));
-    }
-
-    // Calculate total budget from all months in the range
-    const totalBudget = analyticsData.monthlyTrends.reduce((sum, trend) => sum + trend.income, 0);
-
-    // Calculate budget utilization with filtered total
-    const budgetUtilization = totalBudget > 0 ? (filteredTotalAmount / totalBudget) * 100 : 0;
-    
-    // Calculate filtered monthly trends
-    const monthlyExpenseMap = new Map<string, number>();
-    filteredExpenses.forEach((exp) => {
-      const expDate = new Date(exp.date);
-      const year = expDate.getFullYear();
-      const month = String(expDate.getMonth() + 1).padStart(2, '0');
-      const monthKey = `${year}-${month}`;
-      
-      monthlyExpenseMap.set(monthKey, (monthlyExpenseMap.get(monthKey) || 0) + exp.amount);
-    });
-
-    const filteredMonthlyTrends = analyticsData.monthlyTrends.map(trend => ({
-      ...trend,
-      expenses: monthlyExpenseMap.get(trend.month) || 0
-    }));
-    
-    return {
-      ...analyticsData,
-      topExpenses: filteredExpenses,
-      categoryBreakdown: recalculatedCategories,
-      monthlyTrends: filteredMonthlyTrends,
-      filteredTotalAmount,
-      totalBudget,
-      insights: {
-        ...analyticsData.insights,
-        budgetUtilization
-      }
-    };
-  }, [analyticsData, selectedCategory, selectedPayment]);
 
   // Get time period label
   const timePeriodLabel = timeRanges.find(range => range.value === timeRange)?.label || "Selected Period";
@@ -246,9 +187,9 @@ export default function AnalyticsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Categories</SelectItem>
-                        {analyticsData?.categoryBreakdown?.map((cat) => (
-                          <SelectItem key={cat.category} value={cat.category}>
-                            {cat.category}
+                        {categories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -260,10 +201,11 @@ export default function AnalyticsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Payment Methods</SelectItem>
-                        <SelectItem value="Credit Card">Credit Card</SelectItem>
-                        <SelectItem value="Debit Card">Debit Card</SelectItem>
-                        <SelectItem value="Cash">Cash</SelectItem>
-                        <SelectItem value="UPI">UPI</SelectItem>
+                        {paymentMethods.map((method) => (
+                          <SelectItem key={method} value={method}>
+                            {method}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
 
@@ -291,7 +233,7 @@ export default function AnalyticsPage() {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
                 <p className="mt-4 text-muted-foreground">Loading analytics...</p>
               </div>
-            ) : filteredData ? (
+            ) : analyticsData ? (
               <>
                 {/* Key Metrics Grid */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -377,7 +319,7 @@ export default function AnalyticsPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-2 gap-4">
-                          {filteredData.categoryBreakdown?.map((category, i) => {
+                          {analyticsData.categoryBreakdown?.map((category, i) => {
                             const Icon = getIconComponent(category.icon);
                             const isHovered = hoveredCategory === category.category;
                             
@@ -434,8 +376,8 @@ export default function AnalyticsPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="h-64 flex items-end justify-between gap-2 px-2">
-                          {filteredData.monthlyTrends?.map((data, i) => {
-                            const maxValue = Math.max(...(filteredData.monthlyTrends?.map(d => d.expenses) || []), 1);
+                          {analyticsData.monthlyTrends?.map((data, i) => {
+                            const maxValue = Math.max(...(analyticsData.monthlyTrends?.map(d => d.expenses) || []), 1);
                             const heightPercent = maxValue > 0 ? (data.expenses / maxValue) * 100 : 0;
                             
                             return (
@@ -499,29 +441,29 @@ export default function AnalyticsPage() {
                                 strokeWidth="12"
                                 fill="transparent"
                                 strokeDasharray={`${2 * Math.PI * 70}`}
-                                strokeDashoffset={`${2 * Math.PI * 70 * (1 - Math.min(filteredData.insights.budgetUtilization / 100, 1))}`}
-                                className={filteredData.insights.budgetUtilization > 90 ? "text-red-500" : filteredData.insights.budgetUtilization > 70 ? "text-orange-500" : "text-green-500"}
+                                strokeDashoffset={`${2 * Math.PI * 70 * (1 - Math.min(analyticsData.insights.budgetUtilization / 100, 1))}`}
+                                className={analyticsData.insights.budgetUtilization > 90 ? "text-red-500" : analyticsData.insights.budgetUtilization > 70 ? "text-orange-500" : "text-green-500"}
                                 strokeLinecap="round"
                               />
                             </svg>
                             <div className="absolute flex flex-col items-center">
-                              <span className="text-3xl font-bold">{filteredData.insights.budgetUtilization.toFixed(0)}%</span>
+                              <span className="text-3xl font-bold">{analyticsData.insights.budgetUtilization.toFixed(0)}%</span>
                               <span className="text-xs text-muted-foreground">Used</span>
                             </div>
                           </div>
                           <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Spent:</span>
-                              <span className="font-semibold">{formatAmount(filteredData.filteredTotalAmount)}</span>
+                              <span className="font-semibold">{formatAmount(analyticsData.topExpenses.reduce((sum, exp) => sum + exp.amount, 0))}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Budget:</span>
-                              <span className="font-semibold">{formatAmount(filteredData.totalBudget)}</span>
+                              <span className="font-semibold">{formatAmount(analyticsData.monthlyTrends.reduce((sum, trend) => sum + trend.income, 0))}</span>
                             </div>
                             <div className="flex justify-between pt-2 border-t">
                               <span className="text-muted-foreground">Remaining:</span>
-                              <span className={`font-bold ${filteredData.totalBudget - filteredData.filteredTotalAmount > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {formatAmount(Math.max(0, filteredData.totalBudget - filteredData.filteredTotalAmount))}
+                              <span className={`font-bold ${analyticsData.monthlyTrends.reduce((sum, trend) => sum + trend.income, 0) - analyticsData.topExpenses.reduce((sum, exp) => sum + exp.amount, 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {formatAmount(Math.max(0, analyticsData.monthlyTrends.reduce((sum, trend) => sum + trend.income, 0) - analyticsData.topExpenses.reduce((sum, exp) => sum + exp.amount, 0)))}
                               </span>
                             </div>
                           </div>
@@ -537,7 +479,7 @@ export default function AnalyticsPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          {filteredData.topExpenses?.slice(0, 8).map((expense, i) => (
+                          {analyticsData.topExpenses?.slice(0, 8).map((expense, i) => (
                             <div 
                               key={expense.id} 
                               className="flex items-center gap-3 p-3 rounded-lg border border-border/40 bg-background/30 hover:bg-background/50 hover:border-border transition-all"
